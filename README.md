@@ -15,6 +15,16 @@ Abra `index.html` em qualquer navegador moderno. Não há instalação, servidor
 - **Lutar** por turnos contra criaturas e contra os outros nove campeões, controlados pelo jogo.
 - **Fugir da névoa**: a cada 3 horas o sino condena novas regiões, até restar um único refúgio.
 
+## Controles
+
+Feito primeiro para celular: status no topo, registro no meio e as ações fixas embaixo, ao alcance do polegar.
+Itens de comer e beber ficam numa fileira de uso rápido; o mapa, a forja e a mochila abrem em painéis.
+A linha 🎯 mostra o que falta para a próxima arma e ⭐ marca no mapa onde encontrar.
+A partida é salva sozinha no aparelho.
+
+No computador há atalhos: `E` explorar, `R` descansar, `F` forjar, `I` mochila, `M` mapa, setas ou `WASD` para viajar.
+Em combate: `1` atacar, `2` habilidade, `3` fugir, `4`–`9` itens, `Enter` continuar.
+
 ## O que há no jogo
 
 - 10 campeões jogáveis, cada um com passiva e habilidade próprias

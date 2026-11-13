@@ -533,8 +533,20 @@ const Game = (() => {
 
   function closeCombat() { if (S.combat && S.combat.done) S.combat = null; }
 
+  /* Partida salva: só fora de combate, quando o estado não guarda referências */
+  function serialize() { return S && !S.combat && !S.over ? JSON.stringify(S) : null; }
+  function restore(json) {
+    try {
+      const d = JSON.parse(json);
+      if (!d || !d.p || !Array.isArray(d.npcs) || d.areas.length !== AREAS.length) return false;
+      S = d; S.combat = null;
+      return true;
+    } catch { return false; }
+  }
+
   return {
     get S() { return S; },
+    serialize, restore,
     newGame, stats, neighbors, fmtTime, nextMist, isNight, npcsAt, aliveNpcs, xpNeed, mxpNeed,
     explore, move, rest, craft, canCraft, owned, equip, useItem, drop, combatAct, closeCombat,
   };
