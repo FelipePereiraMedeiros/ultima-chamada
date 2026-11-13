@@ -1,44 +1,155 @@
-/* Última Chama — interface (pensada primeiro para celular) */
+/* Última Chama — interface em tempo real (pensada primeiro para celular) */
 
 const UI = (() => {
   const app = document.getElementById('app');
-  const SAVE = 'ultima-chama-save', REC = 'ultima-chama';
-  let screen = 'title';   // title | select | game
-  let modal = null;       // map | inv | craft | help | null
-  let selHero = 0;
-  let craftAll = false;
-  let mapSel = null;
-  let recorded = false;
+  const REC = 'ultima-chama', MAX_PLAYERS = 8;
+  let screen = 'title';   // title | select | lobby | game
+  let mode = 'solo';      // solo | host | join
+  let sess = null;        // partida ou sala em andamento
+  let modal = null;       // map | inv | craft | help
+  let selHero = 0, nick = '', joinCode = '', notice = '';
+  let craftAll = false, mapSel = null, recorded = false;
 
   /* ---------- Armazenamento local (o jogo funciona sem ele) ---------- */
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* indisponível */ } },
-    del(k) { try { localStorage.removeItem(k); } catch { /* indisponível */ } },
   };
   const record = () => { try { return JSON.parse(store.get(REC) || '{}'); } catch { return {}; } };
-  function autosave() {
-    const S = Game.S;
-    if (screen !== 'game' || !S) return;
-    if (S.over) {
-      store.del(SAVE);
-      if (!recorded) {
-        recorded = true;
-        const r = record();
-        r.games = (r.games || 0) + 1;
-        if (S.over.win) r.wins = (r.wins || 0) + 1;
-        store.set(REC, JSON.stringify(r));
-      }
-      return;
+  nick = record().nick || '';
+
+  /* ---------- Sessão: solo, anfitrião ou convidado ---------- */
+  const V = () => sess && sess.view;
+  const simNow = () => (V() ? V().now + (V().ended ? 0 : (performance.now() - sess.recvAt) / 1000) : 0);
+
+  function setView(v) {
+    const old = V();
+    if (old && v && v.you.hp < old.you.hp && v.you.alive) {
+      try { navigator.vibrate && navigator.vibrate(25); } catch { /* sem vibração */ }
+      document.body.classList.add('hurt');
+      setTimeout(() => document.body.classList.remove('hurt'), 160);
     }
-    const j = Game.serialize();
-    if (j) store.set(SAVE, j);
+    sess.view = v; sess.recvAt = performance.now();
+    if (v && v.you.over && !recorded) {
+      recorded = true;
+      const r = record();
+      r.games = (r.games || 0) + 1;
+      if (v.you.over.win) r.wins = (r.wins || 0) + 1;
+      store.set(REC, JSON.stringify(r));
+    }
+  }
+
+  function leave() {
+    if (sess && sess.timer) clearInterval(sess.timer);
+    if (sess && sess.mode !== 'solo') Net.close();
+    sess = null; modal = null; mapSel = null;
+  }
+
+  const lobbyRoster = () => sess.players.map((p) => ({ name: p.name || HEROES[p.hero].n, hero: p.hero, host: p.pid === 'me' }));
+  function sendLobby() {
+    const roster = lobbyRoster();
+    for (const p of sess.players) if (p.pid !== 'me') Net.send(p.pid, { t: 'lobby', roster, code: sess.code });
+  }
+
+  function beginMatch() {
+    sess.sim = Sim.create(sess.players);
+    sess.myId = sess.sim.ids.me;
+    sess.started = true;
+    recorded = false; modal = null; mapSel = null; screen = 'game';
+    setView(sess.sim.view(sess.myId));
+    let last = performance.now(), sent = 0;
+    const pushViews = () => {
+      for (const p of sess.players) if (p.pid !== 'me') Net.send(p.pid, { t: 'view', v: sess.sim.view(sess.sim.ids[p.pid]) });
+    };
+    sess.push = pushViews;
+    sess.timer = setInterval(() => {
+      const now = performance.now();
+      let dt = (now - last) / 1000;
+      last = now;
+      if (sess.mode === 'solo' && document.hidden) return; // sozinho, o jogo espera você voltar
+      for (let n = 0; dt > 0 && n < 60; n++) { const d = Math.min(0.25, dt); sess.sim.step(d); dt -= d; }
+      setView(sess.sim.view(sess.myId));
+      if (now - sent >= 240) { sent = now; pushViews(); }
+      render();
+    }, 100);
+  }
+
+  function startSolo() {
+    leave();
+    sess = { mode: 'solo', players: [{ pid: 'me', name: '', hero: selHero }] };
+    beginMatch();
+  }
+
+  function createRoom() {
+    leave();
+    sess = { mode: 'host', players: [{ pid: 'me', name: nick, hero: selHero }], code: null, started: false };
+    screen = 'lobby'; notice = 'Abrindo a sala…';
+    Net.host({
+      onOpen: (code) => { if (!sess) return; sess.code = code; notice = ''; render(); },
+      onError: (text) => { leave(); screen = 'select'; notice = text; render(); },
+      onMsg: (pid, m) => {
+        if (!sess || !m) return;
+        if (m.t === 'join') {
+          if (sess.started) return Net.send(pid, { t: 'no', why: 'A partida já começou.' });
+          if (sess.players.length >= MAX_PLAYERS) return Net.send(pid, { t: 'no', why: 'A sala está cheia.' });
+          if (sess.players.some((p) => p.pid === pid)) return;
+          const hero = Number(m.hero);
+          if (!HEROES[hero]) return;
+          sess.players.push({ pid, name: String(m.name || '').slice(0, 16), hero });
+          sendLobby(); render();
+        } else if (m.t === 'cmd' && sess.started) {
+          const id = sess.sim.ids[pid];
+          if (id) sess.sim.cmd(id, String(m.c), m.v);
+        }
+      },
+      onLeave: (pid) => {
+        if (!sess) return;
+        if (sess.started) { const id = sess.sim.ids[pid]; if (id) sess.sim.removePlayer(id); }
+        sess.players = sess.players.filter((p) => p.pid !== pid);
+        if (!sess.started) { sendLobby(); render(); }
+      },
+    });
+  }
+
+  function joinRoom() {
+    leave();
+    sess = { mode: 'join', roster: null, code: joinCode.trim().toUpperCase() };
+    screen = 'lobby'; notice = 'Conectando à sala…';
+    const fail = (text) => { leave(); screen = 'select'; notice = text; render(); };
+    Net.join(sess.code, {
+      onOpen: () => Net.toHost({ t: 'join', name: nick, hero: selHero }),
+      onError: fail,
+      onClose: () => {
+        if (!sess) return;
+        if (V() && (V().ended || V().you.over)) return; // a partida já terminou: mantém o desfecho na tela
+        fail('A conexão com o anfitrião foi perdida.');
+      },
+      onMsg: (m) => {
+        if (!sess || !m) return;
+        if (m.t === 'no') return fail(m.why);
+        if (m.t === 'lobby') { sess.roster = m.roster; notice = ''; }
+        if (m.t === 'view') {
+          if (screen !== 'game') { screen = 'game'; recorded = false; modal = null; }
+          setView(m.v);
+        }
+        render();
+      },
+    });
+  }
+
+  function command(c, v) {
+    if (!sess || !V()) return;
+    if (sess.mode === 'join') return Net.toHost({ t: 'cmd', c, v });
+    sess.sim.cmd(sess.myId, c, v);
+    setView(sess.sim.view(sess.myId));
   }
 
   /* ---------- Pequenos blocos ---------- */
   const bar = (cls, v, max, label) =>
     `<div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></i><span>${label}</span></div>`;
   const kbd = (k) => `<kbd>${k}</kbd>`;
+  const clock = (s) => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function itemInfo(it) {
     const b = [];
@@ -57,42 +168,48 @@ const UI = (() => {
     return b.join(' · ');
   }
   const itemName = (id) => { const it = ITEMS[id]; return `<span class="r${it.r}">${it.i} ${it.n}</span>`; };
+  const quickLabel = (it) => (it.hp ? `+${it.hp}❤️` : `+${it.vigor}⚡`);
 
-  /* Próxima melhoria da arma equipada e o que falta para ela */
   function goal() {
-    const p = Game.S.p;
-    const ri = RECIPES.findIndex((r) => r.ins.includes(p.equip.arma));
+    const u = V().you;
+    const ri = RECIPES.findIndex((r) => r.ins.includes(u.equip.arma));
     if (ri < 0) return null;
-    const own = Game.owned();
+    const own = Sim.owned(u);
     return { ri, rec: RECIPES[ri], miss: RECIPES[ri].ins.filter((id) => !own[id]) };
   }
   const areaHas = (a, ids) => ids.some((id) => AREAS[a].loot.some((l) => l[0] === id));
-  const craftable = () => RECIPES.reduce((n, _, i) => n + (Game.canCraft(i) ? 1 : 0), 0);
-  const consumables = () => Game.S.p.inv.map((id, i) => ({ id, i })).filter((x) => ITEMS[x.id].t === 'consumivel');
+  const consumables = () => V().you.inv.map((id, i) => ({ id, i })).filter((x) => ITEMS[x.id].t === 'consumivel');
 
-  /* ---------- Título e seleção ---------- */
+  /* ---------- Título, seleção e sala ---------- */
   function title() {
-    const r = record(), hasSave = !!store.get(SAVE);
+    const r = record();
     return `<main class="title">
       <div class="flame">🔥</div>
       <h1>Última Chama</h1>
       <h2>Ilha de Vharun</h2>
-      <p class="lead">A cada geração a chama do mundo vacila. Dez campeões são levados à ilha,
-      a Névoa Cinzenta se fecha — e apenas um sairá carregando o fogo.</p>
+      <p class="lead">Dez campeões são levados à ilha, a Névoa Cinzenta se fecha —
+      e apenas um sairá carregando o fogo.</p>
       <div class="col">
-        ${hasSave ? '<button class="big" data-a="continue">Continuar Partida</button>' : ''}
-        <button class="${hasSave ? '' : 'big'}" data-a="toSelect">Nova Partida</button>
+        <button class="big" data-a="mode" data-v="solo">Jogar Sozinho</button>
+        <button data-a="mode" data-v="host">Criar Sala</button>
+        <button data-a="mode" data-v="join">Entrar em Sala</button>
         <button data-a="modal" data-v="help">Como Jogar</button>
       </div>
       ${r.games ? `<p class="muted">Partidas: ${r.games} · Vitórias: ${r.wins || 0}</p>` : ''}
-      <p class="muted small">Jogo de sobrevivência original, offline e para um jogador. Projeto de fã, sem fins lucrativos.</p>
+      <p class="muted small">Jogo de sobrevivência original em tempo real. Projeto de fã, sem fins lucrativos.</p>
     </main>`;
   }
 
   function select() {
     const h = HEROES[selHero], w = ITEMS[h.start];
+    const go = mode === 'solo' ? 'Entrar na Ilha' : mode === 'host' ? 'Criar Sala' : 'Entrar na Sala';
     return `<main class="select">
-      <h1>Escolha seu campeão</h1>
+      <h1>${mode === 'solo' ? 'Escolha seu campeão' : mode === 'host' ? 'Criar sala' : 'Entrar em sala'}</h1>
+      ${notice ? `<p class="notice">${esc(notice)}</p>` : ''}
+      ${mode !== 'solo' ? `<div class="fields">
+        <label>Seu nome<input data-in="nick" maxlength="16" autocomplete="off" placeholder="Como os outros verão você" value="${esc(nick)}"></label>
+        ${mode === 'join' ? `<label>Código da sala<input data-in="code" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="5 letras" value="${esc(joinCode)}"></label>` : ''}
+      </div>` : ''}
       <div class="heroes">${HEROES.map((x, i) =>
         `<button class="hero ${i === selHero ? 'on' : ''}" data-a="pickHero" data-v="${i}">
           <b>${x.i}</b><span>${x.n.split(' ')[0]}</span></button>`).join('')}</div>
@@ -104,24 +221,41 @@ const UI = (() => {
           <p><em>${h.lore}</em></p>
           <p class="statline">❤️ ${h.hp} · ⚔️ ${h.atk} · 🛡️ ${h.def} · 💨 ${h.spd} · Começa com ${w.i} ${w.n}</p>
           <p><b>Passiva — ${h.pn}:</b> ${h.pd}</p>
-          <p><b>Habilidade — ${h.skill.n}:</b> ${h.skill.d} <span class="muted">(recarga: ${h.skill.cd} turnos)</span></p>
+          <p><b>Habilidade — ${h.skill.n}:</b> ${h.skill.d} <span class="muted">(recarga: ${h.skill.cd * Sim.T.skillTurn}s)</span></p>
         </div>
       </section>
       <div class="foot">
         <button data-a="toTitle">Voltar</button>
-        <button class="big" data-a="start">Entrar na Ilha</button>
+        <button class="big" data-a="go">${go}</button>
+      </div>
+    </main>`;
+  }
+
+  function lobby() {
+    const isHost = sess.mode === 'host';
+    const roster = isHost ? lobbyRoster() : sess.roster;
+    return `<main class="select lobby">
+      <h1>Sala de espera</h1>
+      ${sess.code ? `<p class="center muted">Código da sala</p><p class="code">${esc(sess.code)}</p>
+        <p class="center small muted">${isHost ? 'Passe este código para quem vai jogar. A partida roda no seu aparelho: mantenha esta tela aberta.' : 'Aguardando o anfitrião começar a partida…'}</p>` : ''}
+      ${notice ? `<p class="notice">${esc(notice)}</p>` : ''}
+      ${roster ? `<ul class="list roster">${roster.map((p) =>
+        `<li><span>${HEROES[p.hero].i} <b>${esc(p.name)}</b></span><small>${HEROES[p.hero].n}${p.host ? ' · anfitrião' : ''}</small></li>`).join('')}</ul>
+        <p class="small muted center">${roster.length} de ${MAX_PLAYERS} jogadores · os lugares vagos, até dez campeões, são ocupados pelo jogo.</p>` : ''}
+      <div class="foot">
+        <button data-a="toTitle">Sair</button>
+        ${isHost ? `<button class="big" data-a="begin" ${sess.code ? '' : 'disabled'}>Começar partida</button>` : '<span></span>'}
       </div>
     </main>`;
   }
 
   /* ---------- Mapa ---------- */
   function mapHtml() {
-    const S = Game.S, p = S.p, nb = Game.neighbors(p.area);
-    const tracker = HEROES[p.hero].passive === 'rastreador';
+    const v = V(), u = v.you, nb = Sim.neighbors(u.area);
     const g = goal(), miss = g ? g.miss : [];
     return `<div class="map">${AREAS.map((a, i) => {
-      const st = S.areas[i], here = i === p.area, adj = nb.includes(i);
-      const seen = (tracker && adj) ? Game.npcsAt(i).length : 0;
+      const st = v.areas[i], here = i === u.area, adj = nb.includes(i);
+      const seen = v.near[i] || 0;
       const want = miss.length && st !== 'selada' && areaHas(i, miss);
       return `<button class="cell ${st} ${here ? 'here' : ''} ${adj ? 'adj' : ''} ${mapSel === i ? 'sel' : ''}" data-a="cell" data-v="${i}"
         aria-label="${a.n}${st !== 'livre' ? `, ${st}` : ''}${adj ? ', vizinha' : ''}">
@@ -135,119 +269,105 @@ const UI = (() => {
   }
 
   function areaInfo(i) {
-    const S = Game.S, a = AREAS[i], st = S.areas[i];
+    const a = AREAS[i], st = V().areas[i];
     const g = goal(), miss = g ? g.miss : [];
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''}">${ITEMS[id].i} ${ITEMS[id].n}</span>`).join(', ');
-    const mons = a.mons.map((m) => `${MONS[m].i} ${MONS[m].n}`).join(', ');
     return `<div class="info">
       <strong>${a.i} ${a.n}</strong>
       ${st === 'condenada' ? '<span class="pill warn">condenada</span>' : st === 'selada' ? '<span class="pill bad">névoa</span>' : ''}
       ${a.forge ? '<span class="pill">forja rápida</span>' : ''}${a.sanctuary ? '<span class="pill">descanso melhor</span>' : ''}
       <p class="small">${loot}</p>
-      <p class="small muted">Perigos: ${mons}</p>
+      <p class="small muted">Perigos: ${a.mons.map((m) => `${MONS[m].i} ${MONS[m].n}`).join(', ')}</p>
     </div>`;
   }
 
-  function mapModal() {
-    const p = Game.S.p;
-    const i = mapSel ?? p.area;
-    return `<h2>🗺️ Mapa</h2>
-      ${mapHtml()}
-      <p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem o que falta para sua arma · 🔔 condenada · 🌫️ névoa</p>
-      ${areaInfo(i)}`;
+  /* ---------- Regiões da tela de jogo ---------- */
+  const GAME_SHELL = `<main class="game">
+      <header class="hud"><div class="hudrow"><div class="grow" id="r-hud"></div>
+        <button class="mini" data-a="modal" data-v="help" aria-label="Ajuda">?</button></div></header>
+      <div class="stage">
+        <aside class="side panel" id="r-side"></aside>
+        <div class="main"><div id="r-area"></div><section class="panel log" id="r-log" aria-live="polite"></section></div>
+      </div>
+      <footer class="dock">
+        <div class="actwrap" id="actwrap"><i id="actbar"></i><span id="actlabel"></span></div>
+        <div class="quick" id="r-quick"></div>
+        <nav class="acts" id="r-acts"></nav>
+      </footer>
+    </main><div id="r-over"></div>`;
+
+  function hudHtml() {
+    const v = V(), u = v.you, st = u.st, h = HEROES[u.hero];
+    return `<div class="hudtop"><b class="portrait sm">${h.i}</b><div class="grow">
+        <div class="chips">
+          <span title="Tempo de partida">⏱️ <span id="clock">0:00</span></span>
+          <span id="mistchip" title="Tempo até o sino">${v.lastStand ? '🔥 refúgio final' : '🔔 <span id="mist">0:00</span>'}</span>
+          <span title="Campeões vivos">👥 ${v.alive}</span>
+          <span title="Campeões que você derrotou">☠️ ${u.kills}</span>
+        </div>
+        ${bar('hp', u.hp, st.maxHp, `❤️ ${u.hp}/${st.maxHp}`)}
+        ${bar('vg', u.vigor, 100, `⚡ ${u.vigor}/100`)}
+      </div></div>
+      <div class="hudsub small muted">Nv ${u.level} · ⚔️ ${st.atk} · 🛡️ ${st.def} · 💨 ${st.spd}
+        · ${st.w ? `${ITEMS[st.w].i} ${WTYPES[ITEMS[st.w].wt]} ${st.ml}/10` : 'desarmado'}
+        <span class="xp"><i style="width:${(u.xp / Sim.xpNeed(u.level)) * 100}%"></i></span></div>`;
   }
 
-  /* ---------- Tela de jogo ---------- */
-  function game() {
-    const S = Game.S, p = S.p, st = Game.stats(), h = HEROES[p.hero], a = AREAS[p.area];
-    const status = S.areas[p.area];
-    const mm = Game.nextMist();
-    const here = Game.npcsAt(p.area).length;
+  function areaHtml() {
+    const v = V(), u = v.you, a = AREAS[u.area], status = v.areas[u.area];
     const g = goal(), miss = g ? g.miss : [];
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''}" title="${ITEMS[id].n}">${ITEMS[id].i}</span>`).join('');
-    const nCraft = craftable();
-    const danger = status !== 'livre';
-
     const goalHtml = !g ? ''
       : !g.miss.length
         ? `<button class="goal ready" data-a="craft" data-v="${g.ri}">⚒️ Pronto: forjar ${itemName(g.rec.out)}</button>`
-        : `<p class="goal small">🎯 ${itemName(g.rec.out)} — falta ${g.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}${areaHas(p.area, g.miss) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`;
-
-    const quick = consumables();
-
-    return `<main class="game">
-      <header class="hud">
-        <div class="hudrow">
-          <b class="portrait sm">${h.i}</b>
-          <div class="grow">
-            <div class="chips">
-              <span>${Game.isNight() ? '🌙' : '☀️'} ${Game.fmtTime(S.time)}</span>
-              <span class="${mm <= 60 ? 'warn-t' : ''}" title="Tempo até o sino">🔔 ${Math.floor(mm / 60)}h${String(mm % 60).padStart(2, '0')}</span>
-              <span title="Campeões vivos">👥 ${Game.aliveNpcs().length + 1}</span>
-              <span title="Campeões que você derrotou">☠️ ${S.kills}</span>
-            </div>
-            ${bar('hp', p.hp, st.maxHp, `❤️ ${p.hp}/${st.maxHp}`)}
-            ${bar('vg', p.vigor, 100, `⚡ ${p.vigor}/100`)}
-          </div>
-          <button class="mini" data-a="modal" data-v="help" aria-label="Ajuda">?</button>
-        </div>
-        <div class="hudsub small muted">Nv ${p.level} · ⚔️ ${st.atk} · 🛡️ ${st.def} · 💨 ${st.spd}
-          · ${st.w ? `${st.w.i} ${WTYPES[st.w.wt]} ${st.ml}/10` : 'desarmado'}
-          <span class="xp"><i style="width:${(p.xp / Game.xpNeed(p.level)) * 100}%"></i></span></div>
-      </header>
-
-      <div class="stage">
-        <aside class="side panel">${mapHtml()}${areaInfo(mapSel ?? p.area)}</aside>
-        <div class="main">
-          <section class="panel area ${status}">
-            <h2>${a.i} ${a.n}
-              ${status === 'condenada' ? '<span class="pill warn">condenada — saia em breve</span>' : status === 'selada' ? '<span class="pill bad">névoa — fuja!</span>' : ''}</h2>
-            <p class="desc">${a.d}</p>
-            <p class="loot">${loot}</p>
-            ${here ? `<p class="small warn-t">👣 Rastros frescos: ${here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
-            ${goalHtml}
-          </section>
-          <section class="panel log" id="log" aria-live="polite">${S.log.slice(-40).map((l) =>
-            `<p class="${l.cls}"><time>${Game.fmtTime(l.t).split(', ')[1]}</time> ${l.msg}</p>`).join('')}</section>
-        </div>
-      </div>
-
-      <footer class="dock">
-        ${quick.length ? `<div class="quick">${quick.map((x) =>
-          `<button data-a="use" data-v="${x.i}" title="${itemInfo(ITEMS[x.id])}">${ITEMS[x.id].i}<small>${ITEMS[x.id].hp ? `+${ITEMS[x.id].hp}❤️` : `+${ITEMS[x.id].vigor}⚡`}</small></button>`).join('')}</div>` : ''}
-        <nav class="acts">
-          <button class="mapbtn ${danger ? 'pulse' : ''}" data-a="modal" data-v="map"><b>🗺️</b>Mapa${kbd('M')}</button>
-          <button data-a="rest"><b>🏕️</b>Descansar${kbd('R')}</button>
-          <button class="big" data-a="explore" ${p.vigor < 12 ? 'disabled' : ''}><b>🔍</b>Explorar${kbd('E')}</button>
-          <button data-a="modal" data-v="craft"><b>⚒️</b>Forjar${kbd('F')}${nCraft ? `<i class="badge">${nCraft}</i>` : ''}</button>
-          <button data-a="modal" data-v="inv"><b>🎒</b>Mochila${kbd('I')}<i class="badge dimb">${p.inv.length}/${INV_CAP}</i></button>
-        </nav>
-      </footer>
-    </main>`;
+        : `<p class="goal small">🎯 ${itemName(g.rec.out)} — falta ${g.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}${areaHas(u.area, g.miss) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`;
+    return `<section class="panel area ${status}">
+      <h2>${a.i} ${a.n}
+        ${status === 'condenada' ? '<span class="pill warn">condenada — saia em breve</span>' : status === 'selada' ? '<span class="pill bad">névoa — fuja!</span>' : ''}</h2>
+      <p class="desc">${a.d}</p>
+      <p class="loot">${loot}</p>
+      ${v.here ? `<p class="small warn-t">👣 Rastros frescos: ${v.here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
+      ${goalHtml}
+    </section>`;
   }
+
+  const logHtml = (n) => V().log.slice(-n).map((l) => `<p class="${l.c}"><time>${clock(l.t)}</time> ${l.m}</p>`).join('');
+
+  function actsHtml() {
+    const v = V(), u = v.you;
+    const nCraft = RECIPES.reduce((n, _, i) => n + (Sim.canCraft(u, i) ? 1 : 0), 0);
+    const danger = v.areas[u.area] !== 'livre';
+    return `<button class="mapbtn ${danger ? 'pulse' : ''}" data-a="modal" data-v="map"><b>🗺️</b>Mapa${kbd('M')}</button>
+      <button class="${u.resting ? 'on' : ''}" data-a="cmd" data-v="rest"><b>🏕️</b>${u.resting ? 'Levantar' : 'Descansar'}${kbd('R')}</button>
+      <button class="big" data-a="cmd" data-v="explore"><b>🔍</b>Explorar${kbd('E')}</button>
+      <button data-a="modal" data-v="craft"><b>⚒️</b>Forjar${kbd('F')}${nCraft ? `<i class="badge">${nCraft}</i>` : ''}</button>
+      <button data-a="modal" data-v="inv"><b>🎒</b>Mochila${kbd('I')}<i class="badge dimb">${u.inv.length}/${INV_CAP}</i></button>`;
+  }
+  const quickHtml = (hot) => consumables().map((x, k) =>
+    `<button data-a="use" data-v="${x.i}" title="${itemInfo(ITEMS[x.id])}">${ITEMS[x.id].i}<small>${quickLabel(ITEMS[x.id])}</small>${hot && k < 5 ? kbd(k + 5) : ''}</button>`).join('');
 
   /* ---------- Painéis ---------- */
   function invModal() {
-    const p = Game.S.p;
+    const u = V().you;
     const eq = SLOTS.map((s) => `<li><span class="muted">${SLOT_NAMES[s]}</span>
-      ${p.equip[s] ? `${itemName(p.equip[s])}<small>${itemInfo(ITEMS[p.equip[s]])}</small>` : '<span class="muted">—</span>'}</li>`).join('');
-    const inv = p.inv.length ? p.inv.map((id, i) => {
+      ${u.equip[s] ? `${itemName(u.equip[s])}<small>${itemInfo(ITEMS[u.equip[s]])}</small>` : '<span class="muted">—</span>'}</li>`).join('');
+    const inv = u.inv.length ? u.inv.map((id, i) => {
       const it = ITEMS[id];
       const act = it.t === 'consumivel' ? `<button data-a="use" data-v="${i}">Usar</button>`
         : it.t !== 'material' ? `<button data-a="equip" data-v="${i}">Equipar</button>` : '';
       return `<li>${itemName(id)}<small>${itemInfo(it)}</small>
         <span class="btns">${act}<button class="ghost" data-a="drop" data-v="${i}" aria-label="Descartar ${it.n}">✕</button></span></li>`;
     }).join('') : '<li class="muted">A mochila está vazia.</li>';
-    return `<h2>🎒 Mochila <span class="muted">${p.inv.length}/${INV_CAP}</span></h2>
+    return `<h2>🎒 Mochila <span class="muted">${u.inv.length}/${INV_CAP}</span></h2>
       <h3>Itens</h3><ul class="list">${inv}</ul>
       <h3>Equipado</h3><ul class="list eq">${eq}</ul>`;
   }
 
   function craftModal() {
-    const own = Game.owned();
-    const rows = RECIPES.map((r, i) => ({ r, i, ok: Game.canCraft(i), part: r.ins.some((id) => own[id]) }))
+    const u = V().you, own = Sim.owned(u);
+    const rows = RECIPES.map((r, i) => ({ r, i, ok: Sim.canCraft(u, i), part: r.ins.some((id) => own[id]) }))
       .filter((x) => craftAll || x.ok || x.part)
       .sort((a, b) => b.ok - a.ok || a.i - b.i);
     return `<h2>⚒️ Forjar</h2>
@@ -263,118 +383,205 @@ const UI = (() => {
   function helpModal() {
     return `<h2>Como Jogar</h2>
       <ul class="help">
-        <li><b>Objetivo:</b> ser o último dos dez campeões vivos na ilha.</li>
-        <li><b>Explorar</b> rende materiais, armas e comida — mas pode atrair criaturas ou outros campeões.</li>
+        <li><b>Objetivo:</b> ser o último dos dez campeões vivos. Tudo acontece em tempo real — o relógio não espera.</li>
+        <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
-        <li><b>Maestria:</b> quanto mais você luta com um tipo de arma, mais dano causa com ele.</li>
-        <li><b>Vigor</b> ⚡ é gasto ao explorar e viajar. Descanse, coma e beba para recuperá-lo.</li>
-        <li><b>Névoa Cinzenta:</b> a cada 3 horas o sino condena regiões 🔔; três horas depois a névoa as engole 🌫️ e ficar nelas causa dano constante. No fim resta um único refúgio.</li>
-        <li><b>Combate</b> por turnos: atacar, usar a habilidade, consumir um item ou fugir.</li>
-        <li>A <b>Forja Antiga</b> acelera a forja; o <b>Bosque Sagrado</b> melhora o descanso; a noite é mais perigosa.</li>
-        <li>A partida é salva sozinha neste aparelho.</li>
+        <li><b>Combate:</b> ataque assim que a recarga terminar, use a habilidade do campeão e toque em <b>Defender</b> pouco antes do golpe inimigo (a barra sob o inimigo mostra quando ele vem) para aparar a maior parte do dano.</li>
+        <li><b>Vigor</b> ⚡ é gasto ao explorar e viajar. Descansar recupera vida e vigor aos poucos, mas deixa você exposto.</li>
+        <li><b>Névoa Cinzenta:</b> a cada ${Sim.T.mist} segundos o sino condena regiões 🔔; no toque seguinte a névoa as engole 🌫️ e ficar nelas causa dano constante. No fim resta um único refúgio.</li>
+        <li><b>Salas:</b> um jogador cria a sala e passa o código; a partida roda no aparelho dele, então ele precisa manter o jogo aberto.</li>
       </ul>
       <h3 class="keys">Atalhos de teclado</h3>
       <p class="small keys">${kbd('E')} explorar · ${kbd('R')} descansar · ${kbd('F')} forjar · ${kbd('I')} mochila · ${kbd('M')} mapa ·
         setas ou ${kbd('WASD')} viajar · ${kbd('Esc')} fechar<br>
-        Em combate: ${kbd('1')} atacar · ${kbd('2')} habilidade · ${kbd('3')} fugir · ${kbd('4')}–${kbd('9')} itens · ${kbd('Enter')} continuar</p>`;
+        Em combate: ${kbd('1')} ou ${kbd('Espaço')} atacar · ${kbd('2')} habilidade · ${kbd('3')} defender · ${kbd('4')} fugir · ${kbd('5')}–${kbd('9')} itens</p>`;
   }
 
-  function combatHtml() {
-    const S = Game.S, c = S.combat, e = c.e, p = S.p, st = Game.stats(), h = HEROES[p.hero];
-    const items = consumables();
-    const controls = c.done
-      ? `<button class="big wide" data-a="closeCombat">${S.over ? 'Ver o desfecho' : 'Continuar'}${kbd('Enter')}</button>`
-      : `${items.length ? `<div class="quick">${items.map((x, k) =>
-          `<button data-a="cbItem" data-v="${x.i}" title="${itemInfo(ITEMS[x.id])}">${ITEMS[x.id].i}<small>${ITEMS[x.id].hp ? `+${ITEMS[x.id].hp}❤️` : `+${ITEMS[x.id].vigor}⚡`}</small>${k < 6 ? kbd(k + 4) : ''}</button>`).join('')}</div>` : ''}
-        <div class="cbar">
-          <button data-a="cb" data-v="flee"><b>🏃</b>Fugir${kbd('3')}</button>
-          <button class="big" data-a="cb" data-v="atk"><b>⚔️</b>Atacar${kbd('1')}</button>
-          <button class="skill" data-a="cb" data-v="skill" ${p.cd > 0 ? 'disabled' : ''}><b>✨</b>${h.skill.n}<small>${p.cd > 0 ? `recarga ${p.cd}` : 'pronta'}</small>${kbd('2')}</button>
-        </div>`;
-    return `<div class="overlay"><div class="modal combat">
-      <div class="versus">
-        <div><b class="portrait sm">${h.i}</b><strong>${h.n.split(' ')[0]}</strong>
-          ${bar('hp', p.hp, st.maxHp, `${p.hp}/${st.maxHp}`)}</div>
-        <span class="vs">VS</span>
-        <div><b class="portrait sm">${e.i}</b><strong>${e.n}</strong>
-          ${bar('hp', Math.max(0, e.hp), e.maxHp, `${Math.max(0, Math.round(e.hp))}/${e.maxHp}`)}</div>
+  function combatShell() {
+    const h = HEROES[V().you.hero];
+    const cd = (id) => `<i class="cd" id="${id}"></i>`;
+    return `<div class="overlay"><div class="modal combat" id="combat">
+      <div id="r-vs"></div>
+      <div class="clog" id="r-clog" aria-live="polite"></div>
+      <div class="quick" id="r-cq"></div>
+      <div class="cbar">
+        <button data-a="cmd" data-v="flee">${cd('cd-flee')}<b>🏃</b>Fugir${kbd('4')}</button>
+        <button data-a="cmd" data-v="guard">${cd('cd-guard')}<b>🛡️</b>Defender${kbd('3')}</button>
+        <button class="big" data-a="cmd" data-v="atk">${cd('cd-atk')}<b>⚔️</b>Atacar${kbd('1')}</button>
+        <button class="skill" data-a="cmd" data-v="skill">${cd('cd-skill')}<b>✨</b>${h.skill.n}${kbd('2')}</button>
       </div>
-      <div class="clog" id="clog" aria-live="polite">${c.lines.map((l) => `<p>${l}</p>`).join('')}</div>
-      ${controls}
     </div></div>`;
+  }
+  function vsHtml() {
+    const v = V(), u = v.you, f = v.foe, h = HEROES[u.hero];
+    return `<div class="versus">
+      <div><b class="portrait sm">${h.i}</b><strong>${esc(u.name)}</strong>
+        ${bar('hp', u.hp, u.st.maxHp, `${u.hp}/${u.st.maxHp}`)}
+        <div class="wind"><i id="you-wind"></i></div><small class="state" id="you-state"></small></div>
+      <span class="vs">VS</span>
+      <div><b class="portrait sm">${f.icon}</b><strong>${esc(f.name)}</strong>
+        ${bar('hp', f.hp, f.maxHp, `${f.hp}/${f.maxHp}`)}
+        <div class="wind foe"><i id="foe-wind"></i></div><small class="state" id="foe-state"></small></div>
+    </div>`;
   }
 
   function endHtml() {
-    const S = Game.S, o = S.over, h = HEROES[S.p.hero];
-    return `<div class="overlay"><div class="modal end ${o.win ? 'win' : 'lose'}">
+    const v = V(), u = v.you, o = u.over;
+    const roster = v.roster.slice().sort((a, b) => b.alive - a.alive || b.kills - a.kills);
+    return `<div class="overlay"><div class="modal end ${o.win ? 'win' : 'lose'}"><div class="body">
       <div class="flame">${o.win ? '🔥' : '🕯️'}</div>
       <h1>${o.win ? 'A Última Chama é sua' : 'Sua chama se apagou'}</h1>
-      <p>${o.reason}.</p>
-      <p class="statline">${h.i} ${h.n} · Nível ${S.p.level}<br>
-        Colocação: ${o.rank}º de 10 · Campeões derrotados: ${S.kills}<br>Sobreviveu até ${Game.fmtTime(S.time)}</p>
+      <p>${esc(o.reason)}.</p>
+      <p class="statline">${u.icon} ${esc(u.name)} · Nível ${u.level}<br>
+        Colocação: ${o.rank}º de ${v.total} · Campeões derrotados: ${u.kills}</p>
+      <ul class="list roster">${roster.map((p) =>
+        `<li class="${p.alive ? '' : 'dim'}"><span>${p.icon} ${p.you ? '<b>' : ''}${esc(p.name)}${p.you ? '</b>' : ''}</span>
+          <small>${p.alive ? (v.ended ? 'vencedor' : 'ainda na ilha') : 'eliminado'} · ☠️ ${p.kills}${p.human ? ' · jogador' : ''}</small></li>`).join('')}</ul>
+      </div>
       <div class="foot">
         <button data-a="toTitle">Início</button>
-        <button class="big" data-a="start">Jogar de novo</button>
+        ${sess.mode === 'solo' ? '<button class="big" data-a="go">Jogar de novo</button>' : '<span></span>'}
       </div>
     </div></div>`;
   }
 
+  /* ---------- Desenho: cada região só é refeita quando seu conteúdo muda,
+     para que um botão nunca seja trocado enquanto está sendo tocado ---------- */
+  let shell = null;
+  const cache = {};
+  function setShell(name, html) {
+    if (shell === name) return;
+    shell = name; app.innerHTML = html;
+    for (const k of Object.keys(cache)) delete cache[k];
+  }
+  function patch(id, html, nested = []) {
+    if (cache[id] === html) return false;
+    const el = document.getElementById(id);
+    if (!el) return false;
+    const body = el.querySelector('.body'), top = body ? body.scrollTop : 0;
+    cache[id] = html; el.innerHTML = html;
+    for (const k of nested) delete cache[k];
+    const nb = el.querySelector('.body');
+    if (nb) nb.scrollTop = top;
+    return true;
+  }
+  const modalHtml = (body) => `<div class="overlay" data-a="closeModal"><div class="modal sheet-${modal}" data-a="noop">
+      <div class="body">${body}</div><button class="close" data-a="closeModal">Fechar</button></div></div>`;
+
   function render() {
-    let html = screen === 'title' ? title() : screen === 'select' ? select() : game();
-    const S = Game.S;
-    if (screen === 'game' && S.combat) html += combatHtml();
-    else if (screen === 'game' && S.over) html += endHtml();
-    else if (modal) {
-      const body = modal === 'inv' ? invModal() : modal === 'craft' ? craftModal() : modal === 'map' ? mapModal() : helpModal();
-      html += `<div class="overlay" data-a="closeModal"><div class="modal sheet-${modal}" data-a="noop">
-        <div class="body">${body}</div>
-        <button class="close" data-a="closeModal">Fechar</button></div></div>`;
+    if (screen !== 'game' || !V()) {
+      setShell('menu', '<div id="r-screen"></div><div id="r-over"></div>');
+      patch('r-screen', screen === 'title' ? title() : screen === 'select' ? select() : sess ? lobby() : title());
+      patch('r-over', modal === 'help' ? modalHtml(helpModal()) : '');
+      return;
     }
-    const keep = document.querySelector('.modal .body');
-    const top = keep ? keep.scrollTop : 0;
-    app.innerHTML = html;
-    const body = document.querySelector('.modal .body');
-    if (body) body.scrollTop = top;
-    for (const id of ['log', 'clog']) {
-      const el = document.getElementById(id);
-      if (el) el.scrollTop = el.scrollHeight;
-    }
+    setShell('game', GAME_SHELL);
+    const v = V(), u = v.you;
+    patch('r-hud', hudHtml());
+    patch('r-side', mapHtml() + areaInfo(mapSel ?? u.area));
+    patch('r-area', areaHtml());
+    if (patch('r-log', logHtml(40))) { const el = document.getElementById('r-log'); el.scrollTop = el.scrollHeight; }
+    patch('r-quick', quickHtml(false));
+    patch('r-acts', actsHtml());
+    if (u.over) patch('r-over', endHtml(), ['r-vs', 'r-clog', 'r-cq']);
+    else if (v.foe) {
+      modal = null;
+      patch('r-over', combatShell(), ['r-vs', 'r-clog', 'r-cq']);
+      patch('r-vs', vsHtml());
+      if (patch('r-clog', logHtml(12))) { const el = document.getElementById('r-clog'); el.scrollTop = el.scrollHeight; }
+      patch('r-cq', quickHtml(true));
+    } else if (modal) {
+      const body = modal === 'inv' ? invModal() : modal === 'craft' ? craftModal() : modal === 'help' ? helpModal()
+        : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem o que falta para sua arma · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
+      patch('r-over', modalHtml(body), ['r-vs', 'r-clog', 'r-cq']);
+    } else patch('r-over', '', ['r-vs', 'r-clog', 'r-cq']);
+    live();
   }
 
+  /* Relógios, recargas e barras de progresso: atualizados a cada quadro, sem refazer botões */
+  const $ = (id) => document.getElementById(id);
+  const ACT_LABEL = { explore: 'Explorando…', craft: 'Forjando…', flee: 'Tentando fugir…' };
+  function setCd(id, at, dur, now) {
+    const el = $(id);
+    if (!el) return;
+    const f = Math.max(0, Math.min(1, (at - now) / dur));
+    el.style.transform = `scaleY(${f})`;
+    el.parentElement.classList.toggle('cool', f > 0);
+  }
+  function live() {
+    const v = V();
+    if (screen !== 'game' || !v) return;
+    const now = simNow(), u = v.you, T = Sim.T;
+    const ck = $('clock'), ms = $('mist');
+    if (ck) ck.textContent = clock(now);
+    if (ms) { const left = v.mistIn - (now - v.now); ms.textContent = clock(left); ms.parentElement.classList.toggle('warn-t', left < 20); }
+    const wrap = $('actwrap');
+    if (wrap) {
+      const act = u.alive && u.act;
+      wrap.className = `actwrap ${act ? 'on' : u.resting && u.alive ? 'on rest' : ''}`;
+      if (act) {
+        $('actbar').style.width = `${Math.min(100, ((now - act.start) / (act.end - act.start)) * 100)}%`;
+        $('actlabel').textContent = act.type === 'move' ? `Viajando para ${AREAS[act.to].n}…` : ACT_LABEL[act.type];
+      } else if (u.resting) { $('actbar').style.width = '100%'; $('actlabel').textContent = 'Descansando…'; }
+    }
+    const f = v.foe;
+    if (!f || !$('combat')) return;
+    setCd('cd-atk', u.atkAt, u.st.iv, now);
+    setCd('cd-guard', u.guardAt, T.guardCd, now);
+    setCd('cd-flee', u.act && u.act.type === 'flee' ? u.act.end : u.fleeAt, u.act ? T.flee : T.fleeCd, now);
+    const sk = HEROES[u.hero].skill;
+    setCd('cd-skill', u.skillAt, Math.max(1, (sk.cd - (HEROES[u.hero].passive === 'arcano' ? 1 : 0)) * T.skillTurn), now);
+    const cq = $('r-cq');
+    if (cq) cq.classList.toggle('cool', now < u.itemAt);
+    const fw = $('foe-wind'), yw = $('you-wind');
+    if (fw) fw.style.width = `${Math.max(0, Math.min(1, 1 - (f.atkAt - now) / f.iv)) * 100}%`;
+    if (yw) yw.style.width = `${Math.max(0, Math.min(1, 1 - (u.atkAt - now) / u.st.iv)) * 100}%`;
+    const state = (x) => [x.stunUntil > now ? '💫 atordoado' : '', x.bleedN > 0 ? '🩸 sangrando' : '',
+      x.shieldUntil > now ? '🛡️ guarda erguida' : '', x.guardUntil > now ? '🛡️ defendendo' : ''].filter(Boolean).join(' · ');
+    const fs = $('foe-state'), ys = $('you-state');
+    if (fs) fs.textContent = state(f);
+    if (ys) ys.textContent = state(u);
+    $('combat').classList.toggle('stunned', u.stunUntil > now);
+    $('combat').classList.toggle('guarding', u.guardUntil > now);
+  }
+  (function frame() { live(); requestAnimationFrame(frame); })();
+
   /* ---------- Ações ---------- */
-  const inGame = () => screen === 'game' && Game.S;
   const acts = {
-    toSelect: () => { screen = 'select'; },
-    toTitle: () => { screen = 'title'; modal = null; },
+    mode: (v) => { mode = v; notice = ''; screen = 'select'; },
+    toTitle: () => { leave(); screen = 'title'; notice = ''; },
     pickHero: (v) => { selHero = Number(v); },
-    start: () => { Game.newGame(selHero); screen = 'game'; modal = null; mapSel = null; recorded = false; },
-    continue: () => {
-      if (Game.restore(store.get(SAVE))) { screen = 'game'; modal = null; mapSel = null; recorded = false; selHero = Game.S.p.hero; }
-      else store.del(SAVE);
+    go: () => {
+      notice = '';
+      if (mode !== 'solo') { const r = record(); r.nick = nick; store.set(REC, JSON.stringify(r)); }
+      if (mode === 'solo') startSolo();
+      else if (mode === 'host') createRoom();
+      else if (joinCode.trim().length < 5) notice = 'Digite o código de 5 letras da sala.';
+      else joinRoom();
+    },
+    begin: () => {
+      if (!sess || sess.mode !== 'host' || !sess.code || sess.started) return;
+      beginMatch();
+      sess.push();
     },
     modal: (v) => { modal = modal === v ? null : v; mapSel = null; },
     closeModal: () => { modal = null; mapSel = null; },
     noop: () => {},
     craftAll: () => { craftAll = !craftAll; },
-    explore: () => Game.explore(),
-    rest: () => Game.rest(),
+    cmd: (v) => command(v),
     cell: (v) => {
-      const i = Number(v), S = Game.S;
-      if (Game.neighbors(S.p.area).includes(i)) { Game.move(i); mapSel = null; if (modal === 'map') modal = null; }
+      const i = Number(v), u = V().you;
+      if (Sim.neighbors(u.area).includes(i) && !u.foe) { command('move', i); mapSel = null; if (modal === 'map') modal = null; }
       else mapSel = i;
     },
-    craft: (v) => Game.craft(Number(v)),
-    equip: (v) => Game.equip(Number(v)),
-    use: (v) => Game.useItem(Number(v)),
-    drop: (v) => Game.drop(Number(v)),
-    cb: (v) => Game.combatAct(v),
-    cbItem: (v) => Game.combatAct('item', v),
-    closeCombat: () => Game.closeCombat(),
+    craft: (v) => { command('craft', Number(v)); modal = null; },
+    equip: (v) => command('equip', Number(v)),
+    use: (v) => command('use', Number(v)),
+    drop: (v) => command('drop', Number(v)),
   };
   function run(a, v) {
     if (!acts[a]) return;
     acts[a](v);
-    autosave();
     render();
   }
 
@@ -383,33 +590,35 @@ const UI = (() => {
     if (!el || el.disabled) return;
     run(el.dataset.a, el.dataset.v);
   });
-
+  document.addEventListener('input', (ev) => {
+    const k = ev.target.dataset && ev.target.dataset.in;
+    if (k === 'nick') nick = ev.target.value.slice(0, 16);
+    if (k === 'code') joinCode = ev.target.value.toUpperCase().slice(0, 5);
+  });
   document.addEventListener('keydown', (ev) => {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.target.tagName === 'INPUT') return;
     const k = ev.key.toLowerCase();
     if (k === 'escape' && modal) return run('closeModal');
-    if (!inGame()) return;
-    const S = Game.S;
-    if (S.over && !S.combat) return;
-    if (S.combat) {
-      if (S.combat.done) { if (k === 'enter' || k === ' ') { ev.preventDefault(); run('closeCombat'); } return; }
-      if (k === '1') run('cb', 'atk');
-      else if (k === '2') run('cb', 'skill');
-      else if (k === '3') run('cb', 'flee');
-      else if (k >= '4' && k <= '9') { const it = consumables()[Number(k) - 4]; if (it) run('cbItem', it.i); }
+    const v = V();
+    if (screen !== 'game' || !v || v.you.over) return;
+    if (v.foe) {
+      const map = { 1: 'atk', ' ': 'atk', 2: 'skill', 3: 'guard', 4: 'flee' };
+      if (map[k]) { ev.preventDefault(); return run('cmd', map[k]); }
+      if (k >= '5' && k <= '9') { const it = consumables()[Number(k) - 5]; if (it) run('use', it.i); }
       return;
     }
     const panels = { m: 'map', f: 'craft', i: 'inv', b: 'inv' };
     if (panels[k]) return run('modal', panels[k]);
     if (modal && modal !== 'map') return;
-    if (k === 'e') return run('explore');
-    if (k === 'r') return run('rest');
+    if (k === 'e') return run('cmd', 'explore');
+    if (k === 'r') return run('cmd', 'rest');
     const dir = { arrowup: -4, w: -4, arrowdown: 4, s: 4, arrowleft: -1, a: -1, arrowright: 1, d: 1 }[k];
     if (dir) {
-      const to = S.p.area + dir;
-      if (Game.neighbors(S.p.area).includes(to)) { ev.preventDefault(); run('cell', to); }
+      const to = v.you.area + dir;
+      if (Sim.neighbors(v.you.area).includes(to)) { ev.preventDefault(); run('cell', to); }
     }
   });
+  window.addEventListener('pagehide', () => { if (sess && sess.mode !== 'solo') Net.close(); });
 
   render();
   return { render };
