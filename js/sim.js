@@ -603,7 +603,7 @@ const Sim = (() => {
       if (passive(u, 'rastreador')) for (const a of neighbors(u.area)) near[a] = champs().filter((x) => x.area === a).length;
       const { log, pid, ...me } = u;
       return {
-        now: S.now, you: { ...me, st: stats(u) }, log, areas: S.areas, mistIn: S.mistAt - S.now, lastStand: S.lastStand,
+        now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand,
         alive: champs().length, total: S.total, ended: S.over, near,
         here: champs().filter((x) => x !== u && x.area === u.area).length,
         foe: f ? {

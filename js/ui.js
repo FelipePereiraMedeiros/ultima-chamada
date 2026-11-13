@@ -29,6 +29,7 @@ const UI = (() => {
       document.body.classList.add('hurt');
       setTimeout(() => document.body.classList.remove('hurt'), 160);
     }
+    diff(old, v);
     sess.view = v; sess.recvAt = performance.now();
     if (v && v.you.over && !recorded) {
       recorded = true;
@@ -37,6 +38,70 @@ const UI = (() => {
       if (v.you.over.win) r.wins = (r.wins || 0) + 1;
       store.set(REC, JSON.stringify(r));
     }
+  }
+
+  /* ---------- Efeitos: comparam a visão anterior com a nova e são tocados depois do desenho ---------- */
+  const calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const pending = [];
+  const fx = document.createElement('div');
+  fx.id = 'fx';
+  fx.innerHTML = '<div id="floats"></div><div id="banners"></div><div id="toasts"></div>';
+  document.body.appendChild(fx);
+
+  function diff(old, v) {
+    if (!old || !v || calm) return;
+    const a = old.you, b = v.you;
+    const last = old.log[old.log.length - 1];
+    let i = 0;
+    if (last) { for (i = v.log.length - 1; i >= 0; i--) if (v.log[i].t === last.t && v.log[i].m === last.m) break; i++; }
+    const fresh = v.log.slice(Math.max(i, v.log.length - 4));
+    const crit = fresh.some((e) => e.c === 'cb' && e.m.includes('CRÍTICO'));
+    if (b.hp < a.hp && b.alive) pending.push({ k: 'num', who: 'you', txt: `−${a.hp - b.hp}`, cls: 'dmg' });
+    else if (b.hp - a.hp >= 8 && b.level === a.level && !b.resting) pending.push({ k: 'num', who: 'you', txt: `+${b.hp - a.hp}`, cls: 'heal' });
+    if (old.foe && v.foe && old.foe.name === v.foe.name) {
+      if (v.foe.hp < old.foe.hp) pending.push({ k: 'num', who: 'foe', txt: `−${old.foe.hp - v.foe.hp}`, cls: crit ? 'dmg crit' : 'dmg' });
+      if (v.foe.atkAt > old.foe.atkAt + 0.3) pending.push({ k: 'lunge', who: 'foe' });
+      if (b.atkAt > a.atkAt + 0.3) pending.push({ k: 'lunge', who: 'you' });
+    }
+    if (b.level > a.level) pending.push({ k: 'glow' });
+    for (const e of fresh) {
+      if (e.c === 'good' || /^(Encontrou|Obteve|Saqueou) /.test(e.m)) pending.push({ k: 'toast', txt: e.m });
+      else if (e.c === 'kill') pending.push({ k: 'banner', txt: e.m, cls: 'kill' });
+      else if (e.c === 'sys' && e.t > 1) pending.push({ k: 'banner', txt: e.m, cls: 'sys' });
+      else if ((e.c === 'warn' && /^[🔔🔥]/u.test(e.m)) || (e.c === 'bad' && e.m.includes('engoliu'))) pending.push({ k: 'banner', txt: e.m, cls: 'mist' });
+    }
+  }
+  function kick(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+  function pop(parent, cls, txt, ms) {
+    const el = document.createElement('div');
+    el.className = cls; el.textContent = txt;
+    parent.appendChild(el);
+    while (parent.id !== 'floats' && parent.children.length > 3) parent.firstChild.remove();
+    setTimeout(() => el.remove(), ms);
+    return el;
+  }
+  function flushFx() {
+    for (const f of pending.splice(0)) {
+      const inFight = !!document.querySelector('#r-vs .versus');
+      const el = document.querySelector(f.who === 'foe' ? '#r-vs .versus > div:last-child .portrait'
+        : inFight ? '#r-vs .versus > div:first-child .portrait' : '#r-hud .portrait');
+      if (f.k === 'num' && el) {
+        const r = el.getBoundingClientRect();
+        const n = pop(document.getElementById('floats'), `float ${f.cls}`, f.txt, 900);
+        n.style.left = `${r.left + r.width / 2 + (Math.random() * 24 - 12)}px`;
+        n.style.top = `${r.top}px`;
+        if (f.cls !== 'heal') kick(el, 'shake');
+      } else if (f.k === 'lunge' && el) kick(el, f.who === 'foe' ? 'lunge-l' : 'lunge-r');
+      else if (f.k === 'glow') { const p = document.querySelector('#r-hud .portrait'); if (p) kick(p, 'glow'); }
+      else if (f.k === 'toast') pop(document.getElementById('toasts'), 'toast', f.txt, 2200);
+      else if (f.k === 'banner') pop(document.getElementById('banners'), `banner ${f.cls}`, f.txt, 4200);
+    }
+  }
+  let overKind = '', lastScreen = '';
+  function enter(kind, sel) {
+    const changed = kind !== overKind;
+    overKind = kind;
+    if (changed && kind && !calm) { const el = document.querySelector(sel); if (el) kick(el, 'enter'); }
   }
 
   function leave() {
@@ -184,6 +249,8 @@ const UI = (() => {
   function title() {
     const r = record();
     return `<main class="title">
+      <div class="embers" aria-hidden="true">${Array.from({ length: 14 }, (_, i) =>
+        `<i style="left:${(i * 37) % 100}%;animation-delay:-${(i * 0.83).toFixed(2)}s;animation-duration:${5 + (i % 5)}s"></i>`).join('')}</div>
       <div class="flame">🔥</div>
       <h1>Última Chama</h1>
       <h2>Ilha de Vharun</h2>
@@ -333,7 +400,7 @@ const UI = (() => {
     </section>`;
   }
 
-  const logHtml = (n) => V().log.slice(-n).map((l) => `<p class="${l.c}"><time>${clock(l.t)}</time> ${l.m}</p>`).join('');
+  const logHtml = (n) => V().log.slice(-n).map((l) => `<p class="${esc(l.c)}"><time>${clock(l.t)}</time> ${esc(l.m)}</p>`).join('');
 
   function actsHtml() {
     const v = V(), u = v.you;
@@ -473,9 +540,14 @@ const UI = (() => {
       setShell('menu', '<div id="r-screen"></div><div id="r-over"></div>');
       patch('r-screen', screen === 'title' ? title() : screen === 'select' ? select() : sess ? lobby() : title());
       patch('r-over', modal === 'help' ? modalHtml(helpModal()) : '');
+      if (lastScreen !== screen && !calm) { const m = document.querySelector('#r-screen main'); if (m) kick(m, 'enter'); }
+      lastScreen = screen;
+      enter(modal ? `modal:${modal}` : '', '#r-over .modal');
+      pending.length = 0;
       return;
     }
     setShell('game', GAME_SHELL);
+    lastScreen = screen;
     const v = V(), u = v.you;
     patch('r-hud', hudHtml());
     patch('r-side', mapHtml() + areaInfo(mapSel ?? u.area));
@@ -495,6 +567,8 @@ const UI = (() => {
         : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem o que falta para sua arma · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
       patch('r-over', modalHtml(body), ['r-vs', 'r-clog', 'r-cq']);
     } else patch('r-over', '', ['r-vs', 'r-clog', 'r-cq']);
+    enter(u.over ? 'end' : v.foe ? 'combat' : modal ? `modal:${modal}` : '', '#r-over .modal');
+    flushFx();
     live();
   }
 
@@ -519,6 +593,7 @@ const UI = (() => {
     if (wrap) {
       const act = u.alive && u.act;
       wrap.className = `actwrap ${act ? 'on' : u.resting && u.alive ? 'on rest' : ''}`;
+      wrap.parentElement.dataset.act = act ? act.type : u.resting && u.alive ? 'rest' : '';
       if (act) {
         $('actbar').style.width = `${Math.min(100, ((now - act.start) / (act.end - act.start)) * 100)}%`;
         $('actlabel').textContent = act.type === 'move' ? `Viajando para ${AREAS[act.to].n}…` : ACT_LABEL[act.type];

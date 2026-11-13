@@ -214,3 +214,82 @@ body.hurt .combat { border-color: var(--bad); }
 .roster { margin: 10px 0; text-align: left; }
 .lobby .foot { margin-top: auto; }
 .end .body { text-align: center; }
+
+/* ---------- Animações ---------- */
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; }
+.float { position: absolute; transform: translate(-50%, 0); font: bold 1.5rem/1 Georgia, serif; text-shadow: 0 2px 4px #000, 0 0 2px #000; animation: floatup .9s ease-out forwards; }
+.float.dmg { color: #ff8a7a; } .float.heal { color: var(--good); }
+.float.crit { font-size: 2.2rem; color: #ffd166; }
+@keyframes floatup { 0% { opacity: 0; transform: translate(-50%, 6px) scale(.6); } 18% { opacity: 1; transform: translate(-50%, -14px) scale(1.2); } 100% { opacity: 0; transform: translate(-50%, -64px) scale(1); } }
+
+#toasts { position: absolute; left: 0; right: 0; bottom: calc(176px + var(--safe-b)); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.toast { background: #24382bee; border: 1px solid var(--good); color: #dff5dc; border-radius: 20px; padding: 6px 14px; font-size: .88rem; max-width: 92vw; animation: toast 2.2s ease forwards; }
+@keyframes toast { 0% { opacity: 0; transform: translateY(14px) scale(.9); } 10%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-10px); } }
+#banners { position: absolute; left: 0; right: 0; top: calc(92px + var(--safe-t)); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 10px; }
+.banner { border-radius: 10px; padding: 8px 14px; font-size: .86rem; text-align: center; max-width: 520px; animation: banner 4.2s ease forwards; box-shadow: 0 4px 16px #000a; }
+.banner.kill { background: #3a1c1cee; border: 1px solid var(--bad); color: #f6c4c4; }
+.banner.mist { background: #2a2647ee; border: 1px solid var(--mist); color: #ddd6fb; }
+.banner.sys { background: #3a2d22ee; border: 1px solid var(--gold); color: var(--gold); }
+@keyframes banner { 0% { opacity: 0; transform: translateY(-16px); } 6%, 88% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-8px); } }
+
+.portrait.shake { animation: shake .32s; }
+@keyframes shake { 20% { transform: translateX(-6px) rotate(-4deg); } 40% { transform: translateX(6px) rotate(4deg); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+.portrait.lunge-r { animation: lunge-r .28s; } .portrait.lunge-l { animation: lunge-l .28s; }
+@keyframes lunge-r { 40% { transform: translateX(22px) scale(1.12); } }
+@keyframes lunge-l { 40% { transform: translateX(-22px) scale(1.12); } }
+.portrait.glow { animation: glow 1.4s; }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 #e0a84a00; } 30% { box-shadow: 0 0 0 6px #e0a84aaa, 0 0 24px #e0a84a; transform: scale(1.15); } }
+
+.overlay { animation: dim .18s ease-out; }
+@keyframes dim { from { background: #0000; } }
+.modal.enter { animation: sheet .22s cubic-bezier(.2, .8, .3, 1); }
+@keyframes sheet { from { transform: translateY(40px); opacity: 0; } }
+.combat.enter { animation: clash .3s cubic-bezier(.2, .8, .3, 1); }
+@keyframes clash { 0% { transform: translateY(60px) scale(.96); opacity: 0; } 70% { transform: translateY(-4px); } }
+.end.enter .flame { animation: rise .9s ease-out, flick 2.4s ease-in-out .9s infinite; }
+@keyframes rise { from { transform: scale(.2) translateY(30px); opacity: 0; } }
+main.enter { animation: fadein .28s ease-out; }
+@keyframes fadein { from { opacity: 0; transform: translateY(8px); } }
+
+.log p:last-child, .clog p:last-child { animation: line .25s ease-out; }
+@keyframes line { from { opacity: 0; transform: translateX(-8px); } }
+.bar i { transition: width .3s ease-out; }
+.badge:not(.dimb) { animation: badge 1.6s ease-in-out infinite; }
+@keyframes badge { 50% { transform: scale(1.18); } }
+button.goal.ready { animation: ready 1.4s ease-in-out infinite; }
+@keyframes ready { 50% { box-shadow: 0 0 14px #e0a84a88; } }
+
+.dock[data-act=explore] .acts .big b { animation: search .7s ease-in-out infinite; }
+@keyframes search { 25% { transform: translate(-5px, -2px) rotate(-12deg); } 75% { transform: translate(5px, 2px) rotate(12deg); } }
+.dock[data-act=rest] .acts .on b { animation: bob 1.6s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+.dock[data-act=craft] .acts button:nth-child(4) b { animation: hammer .4s ease-in-out infinite; }
+@keyframes hammer { 50% { transform: rotate(-24deg); } }
+.actwrap.on i { box-shadow: 0 0 10px #e0a84a88; }
+.actwrap.rest i { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .3; } }
+.cbar .skill:not(.cool) { animation: ready 1.4s ease-in-out infinite; }
+.combat.guarding .versus > div:first-child .portrait { box-shadow: 0 0 0 3px #6fb1f0, 0 0 16px #6fb1f0; }
+.wind.foe i { transition: background .1s; }
+
+/* Mapa: névoa à deriva nas regiões tomadas, sino balançando nas condenadas */
+.cell.selada::after { content: ''; position: absolute; inset: -40%; pointer-events: none;
+  background: radial-gradient(circle at 30% 40%, #b9aee055, transparent 45%), radial-gradient(circle at 70% 65%, #8a7fb555, transparent 50%);
+  animation: drift 7s linear infinite alternate; }
+@keyframes drift { from { transform: translate(-12%, -6%) rotate(0deg); } to { transform: translate(12%, 8%) rotate(25deg); } }
+.cell.condenada .tr { animation: ring 1s ease-in-out infinite; transform-origin: top center; }
+@keyframes ring { 25% { transform: rotate(-18deg); } 75% { transform: rotate(18deg); } }
+.cell.here { animation: herepulse 2s ease-in-out infinite; }
+@keyframes herepulse { 50% { box-shadow: 0 0 18px #e0a84aaa; } }
+.cell .bl { animation: badge 1.6s ease-in-out infinite; }
+
+/* Brasas no título */
+.title { position: relative; overflow: hidden; }
+.embers { position: absolute; inset: 0; pointer-events: none; }
+.embers i { position: absolute; bottom: -10px; width: 4px; height: 4px; border-radius: 50%; background: #ffb057; box-shadow: 0 0 8px #e2622b; animation: ember linear infinite; }
+@keyframes ember { 0% { transform: translate(0, 0) scale(1); opacity: 0; } 10% { opacity: 1; } 100% { transform: translate(30px, -90vh) scale(.2); opacity: 0; } }
+.hero.on b { animation: bob 1.6s ease-in-out infinite; }
+.code { animation: ready 2s ease-in-out infinite; border-radius: 12px; }
+
+@media (min-width: 860px) { #toasts { bottom: 150px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
