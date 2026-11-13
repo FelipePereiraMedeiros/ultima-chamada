@@ -300,3 +300,10 @@ button.goal.ready { animation: ready 1.4s ease-in-out infinite; }
 .wish h3 { margin: 0 0 .4em; text-align: center; }
 .wish p { font-style: italic; line-height: 1.55; margin: 0; }
 @keyframes wish { from { opacity: 0; transform: translateY(10px); box-shadow: 0 0 0 #e0a84a00; } to { box-shadow: 0 0 22px #e0a84a55; } }
+
+/* ---------- Forja: filtros ---------- */
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 8px; }
+.tabs button { padding: 6px 2px; min-height: 40px; font-size: .78rem; }
+.tabs button.on { border-color: var(--gold); background: #3a2d22; }
+.goal + .goal { border-top: 0; margin-top: 2px; padding-top: 0; }
+button.goal + button.goal, .goal + button.goal { margin-top: 6px; }

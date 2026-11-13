@@ -44,6 +44,9 @@ a ele diretamente por WebRTC. Isso tem consequências:
 
 - **Explorar** regiões para achar materiais, armas e comida — pode atrair criaturas ou outros campeões.
 - **Forjar** equipamento melhor: sete tipos de arma, cinco degraus cada, do comum ao lendário.
+- **Proteger-se:** cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (defesa e vida) e um
+  ágil (crítico, velocidade, ataque rápido). Há peças que devolvem dano, regeneram, resistem à névoa ou
+  encurtam atordoamentos; com as cinco partes cobertas o dano recebido cai 10%.
 - **Lutar em tempo real:** atacar quando a recarga termina, usar a habilidade do campeão, **defender** no
   momento certo para aparar o golpe, usar itens ou fugir.
 - **Fugir da névoa:** a cada 90 segundos o sino condena novas regiões, até restar um único refúgio.

@@ -8,7 +8,7 @@ const UI = (() => {
   let sess = null;        // partida ou sala em andamento
   let modal = null;       // map | inv | craft | help
   let selHero = 0, nick = '', joinCode = '', notice = '';
-  let craftAll = false, mapSel = null, recorded = false;
+  let craftAll = false, craftTab = 'all', mapSel = null, recorded = false;
 
   /* ---------- Armazenamento local (o jogo funciona sem ele) ---------- */
   const store = {
@@ -224,6 +224,14 @@ const UI = (() => {
       if (it.def) b.push(`Defesa +${it.def}`);
       if (it.hp) b.push(`Vida +${it.hp}`);
       if (it.spd) b.push(`Velocidade +${it.spd}`);
+      if (it.crit) b.push(`Crítico +${Math.round(it.crit * 100)}%`);
+      if (it.haste) b.push(`Ataca ${Math.round(it.haste * 100)}% mais rápido`);
+      if (it.block) b.push(`Defender apara +${Math.round(it.block * 100)}%`);
+      if (it.stun) b.push(`Atordoamento −${Math.round(it.stun * 100)}%`);
+      if (it.thorns) b.push(`Devolve ${Math.round(it.thorns * 100)}% do dano`);
+      if (it.regen) b.push(`Regenera +${it.regen}`);
+      if (it.mist) b.push(`Névoa −${Math.round(it.mist * 100)}%`);
+      if (it.stride) b.push('Viajar não gasta vigor');
     }
     if (it.t === 'consumivel') {
       if (it.hp) b.push(`Vida +${it.hp}`);
@@ -242,6 +250,22 @@ const UI = (() => {
     const own = Sim.owned(u);
     return { ri, rec: RECIPES[ri], miss: RECIPES[ri].ins.filter((id) => !own[id]) };
   }
+  /* Próxima proteção ao alcance: só melhorias, preferindo a que falta menos e as partes desprotegidas */
+  function defGoal() {
+    const u = V().you, own = Sim.owned(u);
+    let best = null;
+    RECIPES.forEach((rec, ri) => {
+      const out = ITEMS[rec.out];
+      if (out.t !== 'armadura' || own[out.id]) return;
+      const cur = u.equip[out.slot] && ITEMS[u.equip[out.slot]];
+      if (cur && out.r <= cur.r) return;
+      const miss = rec.ins.filter((id) => !own[id]);
+      const score = miss.length * 10 + (cur ? 1 : 0) - out.r * 0.1;
+      if (!best || score < best.score) best = { ri, rec, miss, score };
+    });
+    return best;
+  }
+  const wanted = (g, dg) => [...new Set([...(g ? g.miss : []), ...(dg ? dg.miss : [])])];
   const areaHas = (a, ids) => ids.some((id) => AREAS[a].loot.some((l) => l[0] === id));
   const consumables = () => V().you.inv.map((id, i) => ({ id, i })).filter((x) => ITEMS[x.id].t === 'consumivel');
 
@@ -320,7 +344,7 @@ const UI = (() => {
   /* ---------- Mapa ---------- */
   function mapHtml() {
     const v = V(), u = v.you, nb = Sim.neighbors(u.area);
-    const g = goal(), miss = g ? g.miss : [];
+    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
     return `<div class="map">${AREAS.map((a, i) => {
       const st = v.areas[i], here = i === u.area, adj = nb.includes(i);
       const seen = v.near[i] || 0;
@@ -338,7 +362,7 @@ const UI = (() => {
 
   function areaInfo(i) {
     const a = AREAS[i], st = V().areas[i];
-    const g = goal(), miss = g ? g.miss : [];
+    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''}">${ITEMS[id].i} ${ITEMS[id].n}</span>`).join(', ');
     return `<div class="info">
@@ -384,7 +408,7 @@ const UI = (() => {
 
   function areaHtml() {
     const v = V(), u = v.you, a = AREAS[u.area], status = v.areas[u.area];
-    const g = goal(), miss = g ? g.miss : [];
+    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''}" title="${ITEMS[id].n}">${ITEMS[id].i}</span>`).join('');
     const goalHtml = !g ? ''
@@ -398,6 +422,9 @@ const UI = (() => {
       <p class="loot">${loot}</p>
       ${v.here ? `<p class="small warn-t">👣 Rastros frescos: ${v.here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
       ${goalHtml}
+      ${!dg ? '' : !dg.miss.length
+        ? `<button class="goal ready" data-a="craft" data-v="${dg.ri}">🛡️ Pronto: forjar ${itemName(dg.rec.out)}</button>`
+        : `<p class="goal small">🛡️ ${itemName(dg.rec.out)} — falta ${dg.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}${areaHas(u.area, dg.miss) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`}
     </section>`;
   }
 
@@ -430,15 +457,21 @@ const UI = (() => {
     }).join('') : '<li class="muted">A mochila está vazia.</li>';
     return `<h2>🎒 Mochila <span class="muted">${u.inv.length}/${INV_CAP}</span></h2>
       <h3>Itens</h3><ul class="list">${inv}</ul>
-      <h3>Equipado</h3><ul class="list eq">${eq}</ul>`;
+      <h3>Equipado</h3>
+      <p class="small muted">🛡️ Proteção das peças: +${u.st.armor} de defesa · ${u.st.pieces}/5 partes cobertas ·
+        ${u.st.full ? '<b class="want">armadura completa: −10% de dano recebido</b>' : 'cubra as cinco para receber −10% de dano'}</p>
+      <ul class="list eq">${eq}</ul>`;
   }
 
   function craftModal() {
     const u = V().you, own = Sim.owned(u);
     const rows = RECIPES.map((r, i) => ({ r, i, ok: Sim.canCraft(u, i), part: r.ins.some((id) => own[id]) }))
       .filter((x) => craftAll || x.ok || x.part)
+      .filter((x) => craftTab === 'all' || ITEMS[x.r.out].t === craftTab)
       .sort((a, b) => b.ok - a.ok || a.i - b.i);
+    const tab = (k, label) => `<button class="${craftTab === k ? 'on' : ''}" data-a="craftTab" data-v="${k}">${label}</button>`;
     return `<h2>⚒️ Forjar</h2>
+      <div class="tabs">${tab('all', 'Tudo')}${tab('arma', '⚔️ Armas')}${tab('armadura', '🛡️ Proteções')}${tab('consumivel', '🍖 Sustento')}</div>
       <label class="check"><input type="checkbox" data-a="craftAll" ${craftAll ? 'checked' : ''}> Mostrar todas as receitas</label>
       <ul class="list">${rows.length ? rows.map(({ r, i, ok }) => {
         const out = ITEMS[r.out];
@@ -454,6 +487,7 @@ const UI = (() => {
         <li><b>Objetivo:</b> ser o último dos dez amaldiçoados de pé. A Última Chama concede um desejo ao vencedor — o dele só é revelado na vitória. Tudo acontece em tempo real.</li>
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
+        <li><b>Proteções:</b> cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (mais defesa e vida) e um ágil (crítico, velocidade, ataque rápido). Algumas devolvem dano, regeneram ou resistem à névoa. Com as cinco partes cobertas você recebe 10% menos dano. A linha 🛡️ mostra a próxima peça ao alcance.</li>
         <li><b>Combate:</b> ataque assim que a recarga terminar, use a habilidade do campeão e toque em <b>Defender</b> pouco antes do golpe inimigo (a barra sob o inimigo mostra quando ele vem) para aparar a maior parte do dano.</li>
         <li><b>Vigor</b> ⚡ é gasto ao explorar e viajar. Descansar recupera vida e vigor aos poucos, mas deixa você exposto.</li>
         <li><b>Névoa Cinzenta:</b> a cada ${Sim.T.mist} segundos o sino condena regiões 🔔; no toque seguinte a névoa as engole 🌫️ e ficar nelas causa dano constante. No fim resta um único refúgio.</li>
@@ -646,6 +680,7 @@ const UI = (() => {
     closeModal: () => { modal = null; mapSel = null; },
     noop: () => {},
     craftAll: () => { craftAll = !craftAll; },
+    craftTab: (v) => { craftTab = v; },
     cmd: (v) => command(v),
     cell: (v) => {
       const i = Number(v), u = V().you;

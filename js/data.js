@@ -83,20 +83,40 @@ wep('lanca_ossea', 'Lança de Osso', '🔱', 'lanca', 28, 2);
 wep('lanca_radiante', 'Tridente Lunar', '🔱', 'lanca', 44, 3);
 wep('ferrao_wyrm', 'Tridente do Abismo', '🔱', 'lanca', 65, 4);
 
-/* Armaduras */
+/* Proteções: cada parte do corpo tem um caminho pesado (aguenta mais) e um ágil (bate melhor).
+   Efeitos além de defesa/vida/velocidade:
+     crit    chance de crítico          haste   ataca mais rápido
+     block   Defender apara mais        stun    atordoamentos duram menos
+     thorns  devolve parte do dano      regen   recupera vida com o tempo
+     mist    resiste à névoa            stride  viajar não gasta vigor */
 arm('capuz', 'Capuz de Mortalha', '🧢', 'cabeca', 0, { def: 2 });
 arm('elmo_ferro', 'Elmo de Ferro Frio', '🪖', 'cabeca', 1, { def: 5 });
-arm('elmo_runico', 'Máscara Selada', '🎭', 'cabeca', 3, { def: 9, hp: 10 });
+arm('elmo_runico', 'Máscara Selada', '🎭', 'cabeca', 3, { def: 10, hp: 10, stun: 0.6 });
+arm('chapeu_cacador', 'Chapéu do Caçador', '🎩', 'cabeca', 2, { def: 3, crit: 0.08 });
+arm('coroa_corvos', 'Coroa de Corvos', '👑', 'cabeca', 3, { def: 6, crit: 0.14 });
+
 arm('gibao', 'Casaco de Viajante', '🧥', 'corpo', 0, { def: 4 });
-arm('cota_malha', 'Cota de Malha', '🦺', 'corpo', 2, { def: 9 });
-arm('couraca_escamas', 'Couraça de Escamas', '🛡️', 'corpo', 4, { def: 15, hp: 20 });
+arm('cota_malha', 'Cota de Malha', '🦺', 'corpo', 2, { def: 10, hp: 10 });
+arm('couraca_escamas', 'Couraça de Escamas', '🛡️', 'corpo', 4, { def: 17, hp: 30, thorns: 0.15 });
+arm('capa_crepusculo', 'Capa do Crepúsculo', '🧣', 'corpo', 2, { def: 6, spd: 2 });
+arm('manto_meia_noite', 'Manto da Meia-Noite', '🦇', 'corpo', 3, { def: 9, spd: 3, mist: 0.6 });
+
 arm('luvas', 'Luvas de Coveiro', '🧤', 'maos', 0, { def: 2 });
 arm('manoplas', 'Manoplas de Ferro Frio', '🧤', 'maos', 1, { def: 5 });
+arm('manoplas_prata', 'Manoplas do Guardião', '🤲', 'maos', 3, { def: 8, block: 0.2 });
+arm('luvas_duelista', 'Luvas de Duelista', '🤌', 'maos', 2, { def: 3, haste: 0.12 });
+
 arm('botas', 'Botas de Couro', '🥾', 'pes', 0, { def: 2, spd: 1 });
 arm('botas_andarilho', 'Botas do Andarilho Noturno', '🥾', 'pes', 2, { def: 3, spd: 3 });
+arm('botas_leguas', 'Botas de Sete Léguas', '👢', 'pes', 3, { def: 4, spd: 5, stride: true });
+arm('grevas', 'Grevas de Ferro Frio', '🦿', 'pes', 1, { def: 6 });
+arm('grevas_runicas', 'Grevas do Sentinela', '🦿', 'pes', 3, { def: 10, hp: 15, stun: 0.3 });
+
 arm('amuleto_osso', 'Amuleto de Osso', '📿', 'amuleto', 0, { hp: 15 });
-arm('amuleto_lunar', 'Medalhão Lunar', '📿', 'amuleto', 2, { hp: 35, def: 1 });
-arm('amuleto_chama', 'Relicário da Brasa Eterna', '📿', 'amuleto', 4, { hp: 60, def: 3 });
+arm('colar_alho', 'Colar de Alho', '🧄', 'amuleto', 1, { hp: 20, thorns: 0.08 });
+arm('espelho_bronze', 'Espelho de Bronze', '🪞', 'amuleto', 3, { hp: 30, thorns: 0.22 });
+arm('amuleto_lunar', 'Medalhão Lunar', '📿', 'amuleto', 2, { hp: 35, def: 1, regen: 2 });
+arm('amuleto_chama', 'Relicário da Brasa Eterna', '📿', 'amuleto', 4, { hp: 60, def: 3, regen: 4, mist: 0.5 });
 
 /* Consumíveis */
 con('pao', 'Pão de Centeio', '🍞', 0, 20, 0);
@@ -141,14 +161,25 @@ const RECIPES = [
   ['capuz', 'pano', 'corda'],
   ['elmo_ferro', 'capuz', 'ferro'],
   ['elmo_runico', 'elmo_ferro', 'runa'],
+  ['chapeu_cacador', 'capuz', 'pena', 'couro'],
+  ['coroa_corvos', 'chapeu_cacador', 'essencia'],
   ['gibao', 'couro', 'pano'],
   ['cota_malha', 'gibao', 'ferro', 'carvao'],
   ['couraca_escamas', 'cota_malha', 'escama'],
+  ['capa_crepusculo', 'gibao', 'pena', 'pano'],
+  ['manto_meia_noite', 'capa_crepusculo', 'essencia'],
   ['luvas', 'couro', 'corda'],
   ['manoplas', 'luvas', 'ferro'],
+  ['manoplas_prata', 'manoplas', 'prata', 'runa'],
+  ['luvas_duelista', 'luvas', 'pena', 'prata'],
   ['botas', 'couro', 'galho'],
   ['botas_andarilho', 'botas', 'pena'],
+  ['botas_leguas', 'botas_andarilho', 'cristal', 'essencia'],
+  ['grevas', 'botas', 'ferro'],
+  ['grevas_runicas', 'grevas', 'runa'],
   ['amuleto_osso', 'osso', 'corda'],
+  ['colar_alho', 'amuleto_osso', 'erva', 'cogumelo'],
+  ['espelho_bronze', 'colar_alho', 'prata', 'cristal'],
   ['amuleto_lunar', 'amuleto_osso', 'prata', 'cristal'],
   ['amuleto_chama', 'amuleto_lunar', 'estelar', 'essencia'],
   ['carne_assada', 'carne', 'carvao'],
@@ -162,9 +193,9 @@ const RECIPES = [
 /* Criaturas da noite */
 const MONS = {
   lobo: { n: 'Mastim Infernal', i: '🐕', hp: 40, atk: 12, def: 1, spd: 6, xp: 22, drops: [['carne', 3], ['couro', 3]] },
-  goblin: { n: 'Ladrão de Túmulos', i: '🦹', hp: 36, atk: 11, def: 2, spd: 7, xp: 22, drops: [['pano', 3], ['corda', 3], ['faca', 1], ['pao', 2]] },
+  goblin: { n: 'Ladrão de Túmulos', i: '🦹', hp: 36, atk: 11, def: 2, spd: 7, xp: 22, drops: [['pano', 3], ['corda', 3], ['faca', 1], ['pao', 2], ['luvas', 1], ['botas', 1]] },
   aranha: { n: 'Aranha de Cripta', i: '🕷️', hp: 46, atk: 13, def: 2, spd: 6, xp: 26, drops: [['corda', 4], ['cogumelo', 2], ['essencia', 1]] },
-  esqueleto: { n: 'Esqueleto Inquieto', i: '💀', hp: 62, atk: 17, def: 5, spd: 4, xp: 42, drops: [['osso', 5], ['ferro', 2], ['espada_curta', 1]] },
+  esqueleto: { n: 'Esqueleto Inquieto', i: '💀', hp: 62, atk: 17, def: 5, spd: 4, xp: 42, drops: [['osso', 5], ['ferro', 2], ['espada_curta', 1], ['elmo_ferro', 1]] },
   ogro: { n: 'Gárgula de Pedra', i: '😈', hp: 115, atk: 23, def: 5, spd: 2, xp: 65, drops: [['carne', 3], ['couro', 3], ['pedra', 2], ['prata', 1]] },
   espectro: { n: 'Alma Penada', i: '👻', hp: 72, atk: 21, def: 3, spd: 7, xp: 62, drops: [['essencia', 4], ['pano', 2], ['cristal', 2]] },
   troll: { n: 'Abominação do Lodo', i: '🧌', hp: 165, atk: 29, def: 8, spd: 3, xp: 105, drops: [['couro', 2], ['osso', 2], ['essencia', 3], ['runa', 1]] },
@@ -178,13 +209,13 @@ const AREAS = [
   { n: 'Recife da Sereia', i: '⚓', d: 'Navios partidos contra a rocha onde alguém cantava. O cordame ainda balança sem vento.',
     danger: 0.15, mons: ['goblin'], loot: [['corda', 4], ['pano', 3], ['galho', 3], ['agua', 2], ['lanca_caca', 2], ['cantil', 2], ['carne', 1]] },
   { n: 'Vila dos Archotes', i: '🏚️', d: 'Os aldeões saíram com tochas atrás de um monstro e nunca voltaram para trancar as portas.',
-    danger: 0.15, mons: ['goblin', 'lobo'], loot: [['pano', 4], ['pao', 3], ['faca', 2], ['corda', 2], ['couro', 2], ['maca', 2], ['machadinha', 2]] },
+    danger: 0.15, mons: ['goblin', 'lobo'], loot: [['pano', 4], ['pao', 3], ['faca', 2], ['corda', 2], ['couro', 2], ['maca', 2], ['machadinha', 2], ['capuz', 1], ['luvas', 1]] },
   { n: 'Charneca do Uivo', i: '🌾', d: 'Capim alto e névoa baixa. Quem atravessa à noite jura ouvir alguém pedindo perdão.',
     danger: 0.15, mons: ['lobo'], loot: [['pao', 3], ['maca', 3], ['galho', 3], ['erva', 2], ['carne', 2], ['pena', 1], ['couro', 1]] },
   { n: 'Castelo do Conde', i: '🏰', d: 'Salões gelados, um único lugar posto à mesa e corvos em cada ameia.',
     danger: 0.3, mons: ['ogro', 'lobo'], loot: [['pena', 4], ['cristal', 3], ['pedra', 3], ['agua', 2], ['prata', 2]] },
   { n: 'Feira dos Horrores', i: '🎪', d: 'Tendas rasgadas e jaulas abertas. O cartaz ainda anuncia "os monstros mais terríveis do mundo".',
-    danger: 0.2, mons: ['goblin', 'esqueleto'], loot: [['pano', 3], ['espada_curta', 2], ['arco_curto', 2], ['pao', 2], ['couro', 3], ['corda', 2], ['prata', 2]] },
+    danger: 0.2, mons: ['goblin', 'esqueleto'], loot: [['pano', 3], ['espada_curta', 2], ['arco_curto', 2], ['pao', 2], ['couro', 3], ['corda', 2], ['prata', 2], ['gibao', 1], ['botas', 1]] },
   { n: 'Bosque da Lua Cheia', i: '🌲', d: 'Troncos marcados por garras, da altura de um homem. A lua aqui nunca míngua.',
     danger: 0.25, mons: ['lobo', 'aranha'], loot: [['galho', 4], ['erva', 3], ['cogumelo', 3], ['pena', 2], ['carne', 2], ['arco_curto', 2], ['lanca_caca', 1]] },
   { n: 'Lago de Avalon', i: '🏞️', d: 'Águas imóveis onde uma feiticeira aprendeu tudo — menos a se contentar.',
@@ -200,11 +231,11 @@ const AREAS = [
   { n: 'Capela do Altar Vazio', i: '⛪', d: 'Flores secas, bancos enfeitados e ninguém à espera. Descansar aqui restaura mais.',
     danger: 0.1, mons: ['lobo'], sanctuary: true, loot: [['erva', 4], ['galho', 3], ['agua', 3], ['pena', 2], ['cristal', 1], ['maca', 3]] },
   { n: 'Cemitério da Vigília', i: '⚰️', d: 'Lápides tortas, covas abertas por dentro. Os mortos daqui dormem mal.',
-    danger: 0.35, mons: ['esqueleto', 'espectro'], loot: [['osso', 5], ['essencia', 2], ['pano', 2], ['prata', 2], ['runa', 1]] },
+    danger: 0.35, mons: ['esqueleto', 'espectro'], loot: [['osso', 5], ['essencia', 2], ['pano', 2], ['prata', 2], ['runa', 1], ['amuleto_osso', 2]] },
   { n: 'Ópera Assombrada', i: '🎼', d: 'O lustre caído no meio da plateia, cortinas em farrapos e um órgão que toca sozinho.',
     danger: 0.3, mons: ['espectro', 'golem'], loot: [['cristal', 4], ['runa', 2], ['cajado_aprendiz', 2], ['pano', 2], ['essencia', 2], ['estelar', 1]] },
   { n: 'Tumba do Faraó', i: '🏜️', d: 'Corredores de areia e ouro, armas de um exército enterrado junto com o rei.',
-    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 3], ['espada_curta', 2], ['machadinha', 2], ['lanca_caca', 2], ['couro', 2], ['corda', 2], ['pedra', 2], ['runa', 1]] },
+    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 3], ['espada_curta', 2], ['machadinha', 2], ['lanca_caca', 2], ['couro', 2], ['corda', 2], ['pedra', 2], ['runa', 1], ['elmo_ferro', 1], ['amuleto_osso', 1]] },
   { n: 'Abismo da Serpe', i: '🐉', d: 'Ossos calcinados cobrem o chão. Dizem que a fera guarda uma centelha da própria Chama.',
     danger: 0.45, mons: ['troll', 'wyrm'], loot: [['osso', 4], ['couro', 3], ['carne', 3], ['escama', 1], ['estelar', 1]] },
 ];

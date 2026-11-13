@@ -111,20 +111,25 @@ const Sim = (() => {
         };
       }
       const w = u.equip.arma ? ITEMS[u.equip.arma] : null;
-      let armor = 0, hpB = 0, spd = h.spd;
+      let armor = 0, hpB = 0, spd = h.spd, pieces = 0;
+      const fx = { crit: 0, haste: 0, block: 0, stun: 0, thorns: 0, regen: 0, mist: 0, stride: false };
       for (const s of SLOTS) {
         if (s === 'arma' || !u.equip[s]) continue;
         const it = ITEMS[u.equip[s]];
+        pieces++;
         armor += it.def || 0; hpB += it.hp || 0; spd += it.spd || 0;
+        for (const k of Object.keys(fx)) if (it[k]) fx[k] = k === 'stride' ? true : fx[k] + it[k];
       }
+      const full = pieces === SLOTS.length - 1; // armadura completa: as cinco partes protegidas
       if (passive(u, 'ferreiro')) armor = Math.round(armor * 1.25);
       const ml = w ? (u.mastery[w.wt] || 0) : 0;
       const maxHp = h.hp + (u.level - 1) * 12 + hpB;
       let atk = h.atk + u.level * 2 + (w ? Math.round(w.atk * (1 + ml * 0.05)) : 0);
       if (passive(u, 'furia') && u.hp < maxHp / 2) atk = Math.round(atk * 1.25);
       return {
-        atk, def: h.def + u.level + armor, spd, maxHp, ml, w: w ? w.id : null,
-        crit: 0.1 + (passive(u, 'precisao') ? 0.15 : 0), iv: clamp(2.0 - spd * 0.08, 1.0, 1.8),
+        atk, def: h.def + u.level + armor, spd, maxHp, ml, w: w ? w.id : null, armor, pieces, full, ...fx,
+        crit: 0.1 + (passive(u, 'precisao') ? 0.15 : 0) + fx.crit,
+        iv: clamp(2.0 - spd * 0.08, 1.0, 1.8) * (1 - Math.min(0.3, fx.haste)),
       };
     }
     function heal(u, v) {
@@ -179,10 +184,17 @@ const Sim = (() => {
       if (cr) d *= 1.5;
       if (def.shieldUntil > S.now) d *= 1 - def.shieldV;
       const guarded = def.guardUntil > S.now || (def.kind === 'b' && Math.random() < 0.25);
-      if (guarded) d *= 0.4;
+      if (guarded) d *= Math.max(0.1, 0.4 - (sd.block || 0));
       if (passive(def, 'baluarte')) d *= 0.88;
+      if (sd.full) d *= 0.9;
       d = Math.max(1, Math.round(d));
       def.hp -= d;
+      if (sd.thorns && att.hp > 1) {
+        const t = Math.min(att.hp - 1, Math.max(1, Math.round(d * sd.thorns)));
+        att.hp -= t;
+        plog(def, `🌵 Sua proteção devolve ${t} de dano.`, 'cb');
+        plog(att, `🌵 A proteção de ${def.name} fere você: ${t} de dano.`, 'hurt');
+      }
       if (att.kind === 'h' && sa.w) {
         const wt = ITEMS[sa.w].wt, lv = att.mastery[wt] || 0;
         if (lv < 10) {
@@ -306,7 +318,7 @@ const Sim = (() => {
         } else {
           const r = strike(u, f, sk.type === 'escudo' ? 0.7 : sk.v, sk.n);
           if (sk.type === 'atordoar') {
-            f.stunUntil = S.now + T.stun; f.atkAt = Math.max(f.atkAt, f.stunUntil + 0.2);
+            f.stunUntil = S.now + T.stun * (1 - Math.min(0.8, stats(f).stun || 0)); f.atkAt = Math.max(f.atkAt, f.stunUntil + 0.2);
             if (f.kind === 'h') f.act = null;
             plog(u, `${f.name} fica atordoado!`, 'cb'); plog(f, 'Você está atordoado!', 'warn');
           }
@@ -437,7 +449,8 @@ const Sim = (() => {
         const to = Number(v);
         if (!neighbors(u.area).includes(to)) return;
         u.resting = false;
-        if (u.vigor >= 10) u.vigor -= 10;
+        const cost = stats(u).stride ? 0 : 10;
+        if (u.vigor >= cost) u.vigor -= cost;
         else {
           u.hp -= 8;
           plog(u, 'Sem vigor, você se arrasta pelo caminho (−8 de vida).', 'warn');
@@ -543,7 +556,7 @@ const Sim = (() => {
         u.prog += rnd(0.6, 1.4);
         if (u.prog >= 3 + 1.5 * u.ups) {
           u.prog = 0; u.ups++; u.level += 2;
-          u.wtier = Math.min(4, u.wtier + 1); u.armor += 3;
+          u.wtier = Math.min(4, u.wtier + 1); u.armor += 4;
           u.hp = Math.min(stats(u).maxHp, u.hp + 12);
         }
       } else if (r < 0.8) {
@@ -564,13 +577,15 @@ const Sim = (() => {
         if (!u.alive || !S.units[u.id]) continue;
         if (tick && u.kind !== 'm') {
           if (S.areas[u.area] === 'selada' && !(u.act && u.act.type === 'move')) {
-            u.hp -= T.mistDmg;
-            plog(u, `🌫️ A Névoa Cinzenta corrói sua carne (−${T.mistDmg} de vida). Saia daqui!`, 'bad');
+            const md = Math.max(1, Math.round(T.mistDmg * (1 - Math.min(0.8, stats(u).mist || 0))));
+            u.hp -= md;
+            plog(u, `🌫️ A Névoa Cinzenta corrói sua carne (−${md} de vida). Saia daqui!`, 'bad');
             if (dead(u)) { kill(u, null, 'mist'); continue; }
           }
           if (u.kind === 'h') {
             if (!u.foe) u.vigor = Math.min(100, u.vigor + 1);
-            if (passive(u, 'regen')) heal(u, 2);
+            const rg = (passive(u, 'regen') ? 2 : 0) + (stats(u).regen || 0);
+            if (rg) heal(u, rg);
           }
         }
         if (u.bleedN > 0 && S.now >= u.bleedAt) {
