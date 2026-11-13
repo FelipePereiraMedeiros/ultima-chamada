@@ -89,7 +89,7 @@ const Sim = (() => {
     const passive = (u, k) => u.kind === 'h' && HEROES[u.hero].passive === k;
     S.total = champs().length;
     const intro = () => humans().forEach((u) => {
-      plog(u, 'A Névoa Cinzenta se fecha sobre a Ilha de Vharun. Só um campeão sairá com a chama.', 'sys');
+      plog(u, 'A Névoa Cinzenta se fecha sobre a Ilha de Vharun. A Última Chama concederá um único desejo — ao último que restar de pé.', 'sys');
       plog(u, `Você desperta em ${AREAS[u.area].i} ${AREAS[u.area].n}.`);
     });
 
@@ -256,7 +256,7 @@ const Sim = (() => {
       if (al.length === 1) {
         const w = al[0];
         if (w.kind === 'h' && !w.over) w.over = { win: true, rank: 1, reason: 'Você é o último campeão de pé' };
-        glog(`🔥 ${w.name} carrega a Última Chama.`, 'sys');
+        glog(`🔥 ${w.name} alcança a Última Chama. Um desejo será concedido.`, 'sys');
         S.over = true;
       } else if (!al.some((u) => u.kind === 'h')) S.over = true;
     }

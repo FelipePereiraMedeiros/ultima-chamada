@@ -94,7 +94,7 @@ const UI = (() => {
       } else if (f.k === 'lunge' && el) kick(el, f.who === 'foe' ? 'lunge-l' : 'lunge-r');
       else if (f.k === 'glow') { const p = document.querySelector('#r-hud .portrait'); if (p) kick(p, 'glow'); }
       else if (f.k === 'toast') pop(document.getElementById('toasts'), 'toast', f.txt, 2200);
-      else if (f.k === 'banner') pop(document.getElementById('banners'), `banner ${f.cls}`, f.txt, 4200);
+      else if (f.k === 'banner' && !V().you.over) pop(document.getElementById('banners'), `banner ${f.cls}`, f.txt, 4200);
     }
   }
   let overKind = '', lastScreen = '';
@@ -254,8 +254,8 @@ const UI = (() => {
       <div class="flame">🔥</div>
       <h1>Última Chama</h1>
       <h2>Ilha de Vharun</h2>
-      <p class="lead">Dez campeões são levados à ilha, a Névoa Cinzenta se fecha —
-      e apenas um sairá carregando o fogo.</p>
+      <p class="lead">Uma vez a cada era, a Última Chama concede um único desejo.
+      Dez amaldiçoados foram chamados à ilha para disputá-la — cada um com um erro antigo para desfazer.</p>
       <div class="col">
         <button class="big" data-a="mode" data-v="solo">Jogar Sozinho</button>
         <button data-a="mode" data-v="host">Criar Sala</button>
@@ -271,7 +271,7 @@ const UI = (() => {
     const h = HEROES[selHero], w = ITEMS[h.start];
     const go = mode === 'solo' ? 'Entrar na Ilha' : mode === 'host' ? 'Criar Sala' : 'Entrar na Sala';
     return `<main class="select">
-      <h1>${mode === 'solo' ? 'Escolha seu campeão' : mode === 'host' ? 'Criar sala' : 'Entrar em sala'}</h1>
+      <h1>${mode === 'solo' ? 'Escolha seu amaldiçoado' : mode === 'host' ? 'Criar sala' : 'Entrar em sala'}</h1>
       ${notice ? `<p class="notice">${esc(notice)}</p>` : ''}
       ${mode !== 'solo' ? `<div class="fields">
         <label>Seu nome<input data-in="nick" maxlength="16" autocomplete="off" placeholder="Como os outros verão você" value="${esc(nick)}"></label>
@@ -279,7 +279,7 @@ const UI = (() => {
       </div>` : ''}
       <div class="heroes">${HEROES.map((x, i) =>
         `<button class="hero ${i === selHero ? 'on' : ''}" data-a="pickHero" data-v="${i}">
-          <b>${x.i}</b><span>${x.n.split(' ')[0]}</span></button>`).join('')}</div>
+          <b>${x.i}</b><span>${x.s}</span></button>`).join('')}</div>
       <section class="panel herocard">
         <div class="portrait">${h.i}</div>
         <div>
@@ -289,6 +289,7 @@ const UI = (() => {
           <p class="statline">❤️ ${h.hp} · ⚔️ ${h.atk} · 🛡️ ${h.def} · 💨 ${h.spd} · Começa com ${w.i} ${w.n}</p>
           <p><b>Passiva — ${h.pn}:</b> ${h.pd}</p>
           <p><b>Habilidade — ${h.skill.n}:</b> ${h.skill.d} <span class="muted">(recarga: ${h.skill.cd * Sim.T.skillTurn}s)</span></p>
+          <p class="small wishhint">🔥 O desejo ${h.de} só será revelado se a Chama for sua.</p>
         </div>
       </section>
       <div class="foot">
@@ -450,7 +451,7 @@ const UI = (() => {
   function helpModal() {
     return `<h2>Como Jogar</h2>
       <ul class="help">
-        <li><b>Objetivo:</b> ser o último dos dez campeões vivos. Tudo acontece em tempo real — o relógio não espera.</li>
+        <li><b>Objetivo:</b> ser o último dos dez amaldiçoados de pé. A Última Chama concede um desejo ao vencedor — o dele só é revelado na vitória. Tudo acontece em tempo real.</li>
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
         <li><b>Combate:</b> ataque assim que a recarga terminar, use a habilidade do campeão e toque em <b>Defender</b> pouco antes do golpe inimigo (a barra sob o inimigo mostra quando ele vem) para aparar a maior parte do dano.</li>
@@ -499,6 +500,8 @@ const UI = (() => {
       <div class="flame">${o.win ? '🔥' : '🕯️'}</div>
       <h1>${o.win ? 'A Última Chama é sua' : 'Sua chama se apagou'}</h1>
       <p>${esc(o.reason)}.</p>
+      ${o.win ? `<div class="wish"><h3>O desejo ${HEROES[u.hero].de}</h3><p>${HEROES[u.hero].wish}</p></div>`
+        : `<p class="small muted"><em>O desejo ${HEROES[u.hero].de} continua por realizar.</em></p>`}
       <p class="statline">${u.icon} ${esc(u.name)} · Nível ${u.level}<br>
         Colocação: ${o.rank}º de ${v.total} · Campeões derrotados: ${u.kills}</p>
       <ul class="list roster">${roster.map((p) =>

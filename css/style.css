@@ -293,3 +293,10 @@ button.goal.ready { animation: ready 1.4s ease-in-out infinite; }
 
 @media (min-width: 860px) { #toasts { bottom: 150px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- Lore ---------- */
+.wishhint { color: var(--gold); opacity: .8; }
+.wish { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--gold); border-radius: 12px; background: linear-gradient(#3a2d22, #241c16); text-align: left; animation: wish 1.2s ease-out .5s both; }
+.wish h3 { margin: 0 0 .4em; text-align: center; }
+.wish p { font-style: italic; line-height: 1.55; margin: 0; }
+@keyframes wish { from { opacity: 0; transform: translateY(10px); box-shadow: 0 0 0 #e0a84a00; } to { box-shadow: 0 0 22px #e0a84a55; } }

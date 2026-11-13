@@ -1,16 +1,28 @@
 # 🔥 Última Chama — Ilha de Vharun
 
 Jogo de sobrevivência **em tempo real**, em fantasia medieval, para jogar **sozinho ou com amigos**.
-Dez campeões são levados a uma ilha cercada pela Névoa Cinzenta; só um sai com a chama.
+Uma vez a cada era, a Última Chama concede um único desejo. Dez amaldiçoados são chamados a uma ilha
+cercada pela Névoa Cinzenta para disputá-la — e cada um quer desfazer o erro que o tornou o que é.
 
 É um projeto de fã, sem fins lucrativos, inspirado no gênero de sobrevivência com exploração e forja.
-Mundo, personagens, itens, receitas e textos são **originais** — nenhum conteúdo de outros jogos é usado.
+Nenhum conteúdo de outros jogos é usado.
+
+## A história
+
+Os dez são releituras de figuras clássicas do terror e do mito, todas de domínio público ou do folclore:
+a Criatura de Frankenstein, a Múmia, o Conde Drácula, o Lobisomem, a Sereia, Van Helsing, o Fantasma da Ópera,
+Medusa, Morgana e uma Noiva do Além (personagem original, inspirada no conto popular da noiva morta).
+Textos, itens, receitas e regiões foram escritos para este jogo.
+
+A ilha é feita de pedaços dos lugares onde cada história deu errado — o Castelo do Conde, o Laboratório do
+Criador, o Templo de Atena, a Ópera Assombrada, a Capela do Altar Vazio. Quem vencer tem o desejo realizado,
+e ele só é revelado ao fim de uma partida vitoriosa: um desfecho diferente para cada amaldiçoado.
 
 ## Como jogar
 
 Abra `index.html` em qualquer navegador moderno. Não há instalação nem build.
 
-- **Sozinho:** funciona offline; os outros nove campeões são controlados pelo jogo.
+- **Sozinho:** funciona offline; os outros nove amaldiçoados são controlados pelo jogo.
 - **Com amigos (até 8):** um jogador escolhe *Criar Sala* e passa o código de 5 letras; os outros escolhem
   *Entrar em Sala*. Os lugares vagos, até dez campeões, são ocupados pelo jogo.
 
@@ -50,7 +62,7 @@ Em combate: `1` ou `Espaço` atacar, `2` habilidade, `3` defender, `4` fugir, `5
 ```
 index.html      página única
 css/style.css   aparência
-js/data.js      campeões, regiões, itens, receitas e criaturas
+js/data.js      amaldiçoados (com seus desejos), regiões, itens, receitas e criaturas
 js/sim.js       simulação em tempo real (roda no anfitrião): névoa, combate, forja, adversários
 js/net.js       salas por código (WebRTC via PeerJS)
 js/ui.js        telas e interação
