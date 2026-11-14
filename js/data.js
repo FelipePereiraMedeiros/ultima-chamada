@@ -13,7 +13,7 @@ const WTRAITS = {
   machado: { d: 'Golpe amplo: +15% de dano, mas ataca 10% mais devagar.', dmg: 1.15, iv: 1.1 },
   martelo: { d: 'Peso bruto: ignora 35% da defesa inimiga, mas ataca 12% mais devagar.', pierce: 0.35, iv: 1.12 },
   adaga: { d: 'Mão ligeira: ataca 14% mais rápido e +5% de crítico, com 8% menos dano.', iv: 0.86, dmg: 0.92, crit: 0.05 },
-  arco: { d: 'Tiro de abertura: o primeiro golpe de cada combate causa 60% mais dano.', opener: 1.6 },
+  arco: { d: 'Tiro de abertura: o primeiro golpe de cada combate causa 50% mais dano.', opener: 1.5 },
   cajado: { d: 'Foco arcano: a habilidade recarrega 20% mais rápido e causa 15% mais dano.', skillCd: 0.8, skillDmg: 1.15 },
   lanca: { d: 'Alcance: mantém o inimigo longe, que ataca 12% mais devagar.', reach: 1.12 },
 };
@@ -25,7 +25,8 @@ const INV_CAP = 12;
 
 const ITEMS = {};
 const mat = (id, n, i, r = 0) => { ITEMS[id] = { id, n, i, t: 'material', r }; };
-const wep = (id, n, i, wt, atk, r) => { ITEMS[id] = { id, n, i, t: 'arma', wt, atk, r }; };
+const wep = (id, n, i, wt, atk, r, fx = {}) => { ITEMS[id] = { id, n, i, t: 'arma', wt, atk, r, ...fx }; };
+const mid = (id, n, i) => { ITEMS[id] = { id, n, i, t: 'material', r: 1, mid: true }; };
 const arm = (id, n, i, slot, r, bonus) => { ITEMS[id] = { id, n, i, t: 'armadura', slot, r, ...bonus }; };
 const con = (id, n, i, r, hp, vigor) => { ITEMS[id] = { id, n, i, t: 'consumivel', r, hp, vigor }; };
 
@@ -50,47 +51,77 @@ mat('essencia', 'Ectoplasma', '🫧', 2);
 mat('escama', 'Escama da Serpe', '🐲', 3);
 mat('estelar', 'Centelha da Chama', '✨', 3);
 
-/* Armas: cinco degraus por tipo */
+/* Componentes: feitos de dois materiais brutos de regiões diferentes e usados em várias receitas.
+   São o ponto de disputa — e de escolha: o mesmo componente serve a mais de uma build. */
+mid('aco_frio', 'Aço Frio', '🔩');             // ferro + brasa — peso e resistência
+mid('liga_prata', 'Liga de Prata', '🪙');      // prata + brasa — o metal sagrado
+mid('amalgama', 'Amálgama Sombrio', '🖤');     // ferro + ectoplasma — o metal profano
+mid('couro_reforcado', 'Couro Cravejado', '🪡'); // couro + osso
+mid('haste', 'Haste Ferrada', '🪚');           // estaca + ferro
+mid('empenagem', 'Empenagem de Corvo', '🪽');  // pena + estaca
+mid('lente', 'Lente Lunar', '🔍');             // cristal + prata
+mid('talisma', 'Talismã de Ônix', '🧿');       // escaravelho + osso
+mid('linho_bento', 'Linho Bento', '🕊️');       // mortalha + água benta
+mid('resina', 'Resina Negra', '🫙');           // cogumelo + brasa
+
+/* Armas. Cada tipo: inicial → 1º degrau → duas rotas (2º e 3º degraus) → lendária, alcançável pelas duas.
+   A primeira rota bate mais forte; a segunda bate um pouco menos e traz um efeito.
+   Quem fica sem material no meio do caminho pode trocar de rota sem voltar ao começo.
+   Efeitos de arma: crit, haste, thorns e leech (recupera parte do dano causado). */
 wep('espada_curta', 'Sabre Enferrujado', '🗡️', 'espada', 8, 0);
 wep('espada_longa', 'Sabre de Cavalaria', '🗡️', 'espada', 16, 1);
 wep('lamina_prata', 'Lâmina de Prata', '🗡️', 'espada', 28, 2);
-wep('lamina_runica', 'Lâmina do Voivoda', '🗡️', 'espada', 44, 3);
+wep('lamina_runica', 'Lâmina Consagrada', '🗡️', 'espada', 44, 3, { crit: 0.05 });
+wep('lamina_sangue', 'Lâmina Sangrenta', '🗡️', 'espada', 26, 2, { leech: 0.06 });
+wep('lamina_voivoda', 'Lâmina do Voivoda', '🗡️', 'espada', 41, 3, { leech: 0.1 });
 wep('alvorada', 'Aurora Rubra, a Lâmina do Juramento', '🗡️', 'espada', 64, 4);
 
 wep('machadinha', 'Foice de Coveiro', '🪓', 'machado', 9, 0);
 wep('machado_guerra', 'Gadanha de Ferro', '🪓', 'machado', 17, 1);
 wep('machado_ossos', 'Gadanha Quebra-Ossos', '🪓', 'machado', 29, 2);
-wep('machado_runico', 'Gadanha Espectral', '🪓', 'machado', 45, 3);
+wep('machado_runico', 'Gadanha do Carrasco', '🪓', 'machado', 45, 3);
+wep('foice_sombria', 'Foice Sombria', '🪓', 'machado', 27, 2, { crit: 0.08 });
+wep('gadanha_espectral', 'Gadanha Espectral', '🪓', 'machado', 42, 3, { crit: 0.13 });
 wep('ruina_wyrm', 'Ceifadora de Promessas', '🪓', 'machado', 66, 4);
 
 wep('martelo_ferreiro', 'Marreta de Pedreiro', '🔨', 'martelo', 8, 0);
 wep('malho_pedra', 'Malho de Lápide', '🔨', 'martelo', 16, 1);
 wep('martelo_guerra', 'Maça de Guerra', '🔨', 'martelo', 28, 2);
 wep('martelo_trovao', 'Maça Trovejante', '🔨', 'martelo', 44, 3);
+wep('maca_espinhos', 'Maça de Espinhos', '🔨', 'martelo', 26, 2, { thorns: 0.1 });
+wep('estrela_manha', 'Estrela da Manhã', '🔨', 'martelo', 41, 3, { thorns: 0.18 });
 wep('bigorna_ceu', 'Primeiro Relâmpago', '🔨', 'martelo', 65, 4);
 
 wep('faca', 'Estilete Enferrujado', '🔪', 'adaga', 7, 0);
 wep('adaga_afiada', 'Punhal Afiado', '🔪', 'adaga', 15, 1);
 wep('estilete_prata', 'Estilete de Prata', '🔪', 'adaga', 27, 2);
-wep('adaga_sombria', 'Punhal Sombrio', '🔪', 'adaga', 43, 3);
+wep('punhal_sagrado', 'Punhal Sagrado', '🔪', 'adaga', 43, 3, { crit: 0.06 });
+wep('punhal_veneno', 'Punhal Envenenado', '🔪', 'adaga', 25, 2, { leech: 0.06 });
+wep('adaga_sombria', 'Punhal Profano', '🔪', 'adaga', 40, 3, { leech: 0.1 });
 wep('presa_noite', 'Presa da Meia-Noite', '🔪', 'adaga', 63, 4);
 
 wep('arco_curto', 'Besta de Mão', '🏹', 'arco', 8, 0);
 wep('arco_longo', 'Besta de Caça', '🏹', 'arco', 16, 1);
-wep('arco_composto', 'Besta de Repetição', '🏹', 'arco', 28, 2);
-wep('arco_arcano', 'Besta Abençoada', '🏹', 'arco', 44, 3);
+wep('arco_composto', 'Besta de Repetição', '🏹', 'arco', 28, 2, { haste: 0.06 });
+wep('arco_arcano', 'Besta Abençoada', '🏹', 'arco', 44, 3, { haste: 0.06 });
+wep('besta_cacador', 'Besta do Caçador', '🏹', 'arco', 26, 2, { crit: 0.08 });
+wep('besta_lunar', 'Besta de Mira Lunar', '🏹', 'arco', 41, 3, { crit: 0.14 });
 wep('cantor_vento', 'Juízo de Prata', '🏹', 'arco', 64, 4);
 
 wep('cajado_aprendiz', 'Cetro Rachado', '🪄', 'cajado', 8, 0);
 wep('cajado_cristal', 'Cetro de Cristal', '🪄', 'cajado', 16, 1);
 wep('cajado_sabio', 'Cetro do Vidente', '🪄', 'cajado', 28, 2);
 wep('cajado_runico', 'Cetro dos Faraós', '🪄', 'cajado', 44, 3);
+wep('cetro_profano', 'Cetro Profano', '🪄', 'cajado', 26, 2, { leech: 0.06 });
+wep('cetro_almas', 'Cetro das Almas', '🪄', 'cajado', 41, 3, { leech: 0.1 });
 wep('cetro_eclipse', 'Cetro do Eclipse', '🪄', 'cajado', 64, 4);
 
 wep('lanca_caca', 'Arpão de Pescador', '🔱', 'lanca', 8, 0);
 wep('pique', 'Lança de Ferro Frio', '🔱', 'lanca', 16, 1);
-wep('lanca_ossea', 'Lança de Osso', '🔱', 'lanca', 28, 2);
+wep('alabarda', 'Alabarda', '🔱', 'lanca', 28, 2);
 wep('lanca_radiante', 'Tridente Lunar', '🔱', 'lanca', 44, 3);
+wep('lanca_ossea', 'Lança Farpada', '🔱', 'lanca', 26, 2, { thorns: 0.1 });
+wep('arpao_farpado', 'Arpão do Naufrágio', '🔱', 'lanca', 41, 3, { thorns: 0.16 });
 wep('ferrao_wyrm', 'Tridente do Abismo', '🔱', 'lanca', 65, 4);
 
 /* Proteções: cada parte do corpo tem um caminho pesado (aguenta mais) e um ágil (bate melhor).
@@ -147,67 +178,124 @@ trap('armadilha_ferro', 'Armadilha de Ferro', '🪤', 1, 30);
 trap('armadilha_prata', 'Armadilha de Prata', '🪤', 2, 50, 3);
 
 /* Receitas */
+/* Receitas: sempre dois insumos. As linhas marcadas "troca de rota" convertem uma arma de 2º degrau
+   na sua irmã da outra rota, pelo mesmo componente que ela custaria a partir do 1º degrau. */
 const RECIPES = [
+  // componentes
+  ['aco_frio', 'ferro', 'carvao'],
+  ['liga_prata', 'prata', 'carvao'],
+  ['amalgama', 'ferro', 'essencia'],
+  ['couro_reforcado', 'couro', 'osso'],
+  ['haste', 'galho', 'ferro'],
+  ['empenagem', 'pena', 'galho'],
+  ['lente', 'cristal', 'prata'],
+  ['talisma', 'runa', 'osso'],
+  ['linho_bento', 'pano', 'agua'],
+  ['resina', 'cogumelo', 'carvao'],
+  // lâmina
   ['espada_longa', 'espada_curta', 'ferro'],
-  ['lamina_prata', 'espada_longa', 'prata', 'carvao'],
-  ['lamina_runica', 'lamina_prata', 'runa'],
+  ['lamina_prata', 'espada_longa', 'liga_prata'],
+  ['lamina_runica', 'lamina_prata', 'talisma'],
+  ['lamina_sangue', 'espada_longa', 'amalgama'],
+  ['lamina_voivoda', 'lamina_sangue', 'resina'],
+  ['lamina_sangue', 'lamina_prata', 'amalgama'],   // troca de rota
+  ['lamina_prata', 'lamina_sangue', 'liga_prata'], // troca de rota
   ['alvorada', 'lamina_runica', 'estelar'],
+  ['alvorada', 'lamina_voivoda', 'estelar'],
+  // foice
   ['machado_guerra', 'machadinha', 'ferro'],
-  ['machado_ossos', 'machado_guerra', 'osso', 'couro'],
-  ['machado_runico', 'machado_ossos', 'runa'],
+  ['machado_ossos', 'machado_guerra', 'aco_frio'],
+  ['machado_runico', 'machado_ossos', 'talisma'],
+  ['foice_sombria', 'machado_guerra', 'resina'],
+  ['gadanha_espectral', 'foice_sombria', 'amalgama'],
+  ['foice_sombria', 'machado_ossos', 'resina'],    // troca de rota
+  ['machado_ossos', 'foice_sombria', 'aco_frio'],  // troca de rota
   ['ruina_wyrm', 'machado_runico', 'escama'],
+  ['ruina_wyrm', 'gadanha_espectral', 'escama'],
+  // maça
   ['malho_pedra', 'martelo_ferreiro', 'pedra'],
-  ['martelo_guerra', 'malho_pedra', 'ferro', 'carvao'],
-  ['martelo_trovao', 'martelo_guerra', 'runa'],
+  ['martelo_guerra', 'malho_pedra', 'aco_frio'],
+  ['martelo_trovao', 'martelo_guerra', 'talisma'],
+  ['maca_espinhos', 'malho_pedra', 'haste'],
+  ['estrela_manha', 'maca_espinhos', 'amalgama'],
+  ['maca_espinhos', 'martelo_guerra', 'haste'],    // troca de rota
+  ['martelo_guerra', 'maca_espinhos', 'aco_frio'], // troca de rota
   ['bigorna_ceu', 'martelo_trovao', 'estelar'],
+  ['bigorna_ceu', 'estrela_manha', 'estelar'],
+  // punhal
   ['adaga_afiada', 'faca', 'pedra'],
-  ['estilete_prata', 'adaga_afiada', 'prata', 'pano'],
-  ['adaga_sombria', 'estilete_prata', 'essencia'],
+  ['estilete_prata', 'adaga_afiada', 'liga_prata'],
+  ['punhal_sagrado', 'estilete_prata', 'linho_bento'],
+  ['punhal_veneno', 'adaga_afiada', 'resina'],
+  ['adaga_sombria', 'punhal_veneno', 'amalgama'],
+  ['punhal_veneno', 'estilete_prata', 'resina'],      // troca de rota
+  ['estilete_prata', 'punhal_veneno', 'liga_prata'],  // troca de rota
+  ['presa_noite', 'punhal_sagrado', 'escama'],
   ['presa_noite', 'adaga_sombria', 'escama'],
+  // besta
   ['arco_longo', 'arco_curto', 'corda'],
-  ['arco_composto', 'arco_longo', 'pena', 'galho'],
-  ['arco_arcano', 'arco_composto', 'cristal'],
+  ['arco_composto', 'arco_longo', 'empenagem'],
+  ['arco_arcano', 'arco_composto', 'linho_bento'],
+  ['besta_cacador', 'arco_longo', 'haste'],
+  ['besta_lunar', 'besta_cacador', 'lente'],
+  ['besta_cacador', 'arco_composto', 'haste'],      // troca de rota
+  ['arco_composto', 'besta_cacador', 'empenagem'],  // troca de rota
   ['cantor_vento', 'arco_arcano', 'estelar'],
+  ['cantor_vento', 'besta_lunar', 'estelar'],
+  // cetro
   ['cajado_cristal', 'cajado_aprendiz', 'cristal'],
-  ['cajado_sabio', 'cajado_cristal', 'erva', 'pano'],
-  ['cajado_runico', 'cajado_sabio', 'runa'],
-  ['cetro_eclipse', 'cajado_runico', 'essencia', 'estelar'],
+  ['cajado_sabio', 'cajado_cristal', 'lente'],
+  ['cajado_runico', 'cajado_sabio', 'talisma'],
+  ['cetro_profano', 'cajado_cristal', 'resina'],
+  ['cetro_almas', 'cetro_profano', 'essencia'],
+  ['cetro_profano', 'cajado_sabio', 'resina'],  // troca de rota
+  ['cajado_sabio', 'cetro_profano', 'lente'],   // troca de rota
+  ['cetro_eclipse', 'cajado_runico', 'estelar'],
+  ['cetro_eclipse', 'cetro_almas', 'estelar'],
+  // lança
   ['pique', 'lanca_caca', 'ferro'],
-  ['lanca_ossea', 'pique', 'osso', 'corda'],
-  ['lanca_radiante', 'lanca_ossea', 'cristal'],
+  ['alabarda', 'pique', 'aco_frio'],
+  ['lanca_radiante', 'alabarda', 'lente'],
+  ['lanca_ossea', 'pique', 'haste'],
+  ['arpao_farpado', 'lanca_ossea', 'couro_reforcado'],
+  ['lanca_ossea', 'alabarda', 'haste'],     // troca de rota
+  ['alabarda', 'lanca_ossea', 'aco_frio'],  // troca de rota
   ['ferrao_wyrm', 'lanca_radiante', 'escama'],
+  ['ferrao_wyrm', 'arpao_farpado', 'escama'],
+  // proteções
   ['capuz', 'pano', 'corda'],
   ['elmo_ferro', 'capuz', 'ferro'],
-  ['elmo_runico', 'elmo_ferro', 'runa'],
-  ['chapeu_cacador', 'capuz', 'pena', 'couro'],
+  ['elmo_runico', 'elmo_ferro', 'talisma'],
+  ['chapeu_cacador', 'capuz', 'couro_reforcado'],
   ['coroa_corvos', 'chapeu_cacador', 'essencia'],
   ['gibao', 'couro', 'pano'],
-  ['cota_malha', 'gibao', 'ferro', 'carvao'],
+  ['cota_malha', 'gibao', 'aco_frio'],
   ['couraca_escamas', 'cota_malha', 'escama'],
-  ['capa_crepusculo', 'gibao', 'pena', 'pano'],
+  ['capa_crepusculo', 'gibao', 'empenagem'],
   ['manto_meia_noite', 'capa_crepusculo', 'essencia'],
   ['luvas', 'couro', 'corda'],
   ['manoplas', 'luvas', 'ferro'],
-  ['manoplas_prata', 'manoplas', 'prata', 'runa'],
-  ['luvas_duelista', 'luvas', 'pena', 'prata'],
+  ['manoplas_prata', 'manoplas', 'liga_prata'],
+  ['luvas_duelista', 'luvas', 'couro_reforcado'],
   ['botas', 'couro', 'galho'],
-  ['botas_andarilho', 'botas', 'pena'],
-  ['botas_leguas', 'botas_andarilho', 'cristal', 'essencia'],
+  ['botas_andarilho', 'botas', 'empenagem'],
+  ['botas_leguas', 'botas_andarilho', 'lente'],
   ['grevas', 'botas', 'ferro'],
-  ['grevas_runicas', 'grevas', 'runa'],
+  ['grevas_runicas', 'grevas', 'talisma'],
   ['amuleto_osso', 'osso', 'corda'],
-  ['colar_alho', 'amuleto_osso', 'erva', 'cogumelo'],
-  ['espelho_bronze', 'colar_alho', 'prata', 'cristal'],
-  ['amuleto_lunar', 'amuleto_osso', 'prata', 'cristal'],
-  ['amuleto_chama', 'amuleto_lunar', 'estelar', 'essencia'],
+  ['colar_alho', 'amuleto_osso', 'erva'],
+  ['espelho_bronze', 'colar_alho', 'lente'],
+  ['amuleto_lunar', 'amuleto_osso', 'linho_bento'],
+  ['amuleto_chama', 'amuleto_lunar', 'estelar'],
+  // sustento e utilidades
   ['carne_assada', 'carne', 'carvao'],
-  ['ensopado', 'carne', 'cogumelo', 'agua'],
+  ['ensopado', 'carne_assada', 'cogumelo'],
   ['cantil', 'agua', 'couro'],
   ['cha_lunar', 'erva', 'agua'],
-  ['pocao_cura', 'erva', 'cristal', 'agua'],
-  ['elixir', 'pocao_cura', 'essencia', 'cogumelo'],
-  ['frasco_benta', 'agua', 'pano'],
-  ['bomba_brasa', 'carvao', 'pano', 'corda'],
+  ['pocao_cura', 'cha_lunar', 'cristal'],
+  ['elixir', 'pocao_cura', 'essencia'],
+  ['frasco_benta', 'agua', 'prata'],
+  ['bomba_brasa', 'carvao', 'corda'],
   ['armadilha_ferro', 'ferro', 'corda'],
   ['armadilha_prata', 'armadilha_ferro', 'prata'],
 ].map(([out, ...ins]) => ({ out, ins }));
@@ -251,9 +339,9 @@ const AREAS = [
   { n: 'Pedreira dos Condenados', i: '⛏️', d: 'Correntes presas à rocha e ferramentas largadas no meio do golpe.',
     danger: 0.3, mons: ['goblin', 'esqueleto', 'golem'], loot: [['ferro', 8], ['pano', 3], ['corda', 3], ['martelo_ferreiro', 2]] },
   { n: 'Pântano das Almas', i: '🐸', d: 'Luzes pálidas dançam sobre o lodo. São bonitas até a gente entender o que são.',
-    danger: 0.35, mons: ['aranha', 'troll'], loot: [['cogumelo', 4], ['pena', 4], ['essencia', 3], ['lanca_caca', 1]] },
+    danger: 0.35, mons: ['aranha', 'troll'], loot: [['cogumelo', 4], ['pena', 4], ['essencia', 4], ['lanca_caca', 1]] },
   { n: 'Templo de Atena', i: '🏛️', d: 'Colunas partidas e um jardim de estátuas com expressão de espanto.',
-    danger: 0.3, mons: ['esqueleto', 'espectro', 'golem'], loot: [['cristal', 5], ['runa', 4], ['pedra', 2]] },
+    danger: 0.3, mons: ['esqueleto', 'espectro', 'golem'], loot: [['cristal', 5], ['runa', 5], ['pedra', 2]] },
   { n: 'Laboratório do Criador', i: '⚡', d: 'Bobinas, fornalhas e uma mesa com correias. Aqui se forja mais rápido — tudo já foi feito às pressas.',
     danger: 0.25, mons: ['esqueleto', 'ogro'], forge: true, loot: [['carvao', 6], ['couro', 3], ['cantil', 2], ['martelo_ferreiro', 1], ['luvas', 1]] },
   { n: 'Capela do Altar Vazio', i: '⛪', d: 'Flores secas, bancos enfeitados e ninguém à espera. Descansar aqui restaura mais.',
@@ -261,9 +349,9 @@ const AREAS = [
   { n: 'Cemitério da Vigília', i: '⚰️', d: 'Lápides tortas, covas abertas por dentro. Os mortos daqui dormem mal.',
     danger: 0.35, mons: ['esqueleto', 'espectro'], loot: [['osso', 6], ['pedra', 5], ['machadinha', 2], ['amuleto_osso', 1], ['elmo_ferro', 1]] },
   { n: 'Ópera Assombrada', i: '🎼', d: 'O lustre caído no meio da plateia, cortinas em farrapos e um órgão que toca sozinho.',
-    danger: 0.3, mons: ['espectro', 'golem'], loot: [['pano', 4], ['essencia', 3], ['carvao', 3], ['faca', 2]] },
+    danger: 0.3, mons: ['espectro', 'golem'], loot: [['pano', 4], ['essencia', 4], ['carvao', 3], ['faca', 2]] },
   { n: 'Tumba do Faraó', i: '🏜️', d: 'Corredores de areia e ouro, armas de um exército enterrado junto com o rei.',
-    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 6], ['runa', 4], ['corda', 3], ['cajado_aprendiz', 1], ['amuleto_osso', 1]] },
+    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 6], ['runa', 5], ['corda', 3], ['cajado_aprendiz', 1], ['amuleto_osso', 1]] },
   { n: 'Abismo da Serpe', i: '🐉', d: 'Ossos calcinados cobrem o chão. A Serpe que mora aqui é única — e guarda os materiais das armas lendárias.',
     danger: 0.45, mons: ['troll', 'wyrm'], loot: [['osso', 4], ['carne', 4], ['cogumelo', 2]] },
 ];

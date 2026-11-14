@@ -314,3 +314,9 @@ button.goal + button.goal, .goal + button.goal { margin-top: 6px; }
 .loot .want sub { color: var(--gold); }
 .gone { opacity: .35; text-decoration: line-through; }
 .loot .gone { text-decoration: none; filter: grayscale(1); }
+
+/* ---------- Rotas e componentes ---------- */
+.goal .have { color: var(--good); }
+.alt { margin: 0 0 2px; padding-left: 2px; }
+button.goal small { display: inline; font-size: .72rem; color: var(--muted); }
+button.goal.swap { width: 100%; margin-top: 6px; border: 1px dashed var(--gold); background: none; padding: 8px; }

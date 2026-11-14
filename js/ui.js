@@ -224,6 +224,9 @@ const UI = (() => {
       if (it.def) b.push(`Defesa +${it.def}`);
       if (it.hp) b.push(`Vida +${it.hp}`);
       if (it.spd) b.push(`Velocidade +${it.spd}`);
+    }
+    if (it.t === 'arma' || it.t === 'armadura') {
+      if (it.leech) b.push(`Recupera ${Math.round(it.leech * 100)}% do dano causado`);
       if (it.crit) b.push(`Crítico +${Math.round(it.crit * 100)}%`);
       if (it.haste) b.push(`Ataca ${Math.round(it.haste * 100)}% mais rápido`);
       if (it.block) b.push(`Defender apara +${Math.round(it.block * 100)}%`);
@@ -237,7 +240,7 @@ const UI = (() => {
       if (it.hp) b.push(`Vida +${it.hp}`);
       if (it.vigor) b.push(`Vigor +${it.vigor}`);
     }
-    if (it.t === 'material') b.push('Material');
+    if (it.t === 'material') b.push(it.mid ? 'Componente' : 'Material');
     if (it.t === 'arremesso') b.push(`Arremesso · ${it.dmg} de dano${it.stun ? ' · atordoa' : ''} · só em combate`);
     if (it.t === 'armadilha') b.push(`Armadilha · ${it.dmg} de dano${it.bleed ? ' · faz sangrar' : ''} · arme numa região`);
     return b.join(' · ');
@@ -245,29 +248,55 @@ const UI = (() => {
   const itemName = (id) => { const it = ITEMS[id]; return `<span class="r${it.r}">${it.i} ${it.n}</span>`; };
   const quickLabel = (it) => (it.t === 'arremesso' ? `💥${it.dmg}` : it.t === 'armadilha' ? 'armar' : it.hp ? `+${it.hp}❤️` : `+${it.vigor}⚡`);
 
+  /* Plano para uma receita: o que falta, os materiais brutos por trás disso e o próximo passo forjável agora */
+  function plan(ri) {
+    const u = V().you, own = Sim.owned(u), rec = RECIPES[ri];
+    const miss = rec.ins.filter((id) => !own[id]);
+    const step = !miss.length ? ri : RECIPES.findIndex((r, i) => miss.includes(r.out) && ITEMS[r.out].mid && Sim.canCraft(u, i));
+    return { ri, rec, miss, raws: Sim.expand(u, miss), step: step >= 0 ? step : null };
+  }
+  /* Próximo degrau da arma: a rota que falta menos, e a outra como alternativa */
   function goal() {
-    const u = V().you;
-    const ri = RECIPES.findIndex((r) => r.ins.includes(u.equip.arma));
-    if (ri < 0) return null;
-    const own = Sim.owned(u);
-    return { ri, rec: RECIPES[ri], miss: RECIPES[ri].ins.filter((id) => !own[id]) };
+    const opts = Sim.upgrades(V().you).map(plan).sort((a, b) => (a.step == null) - (b.step == null) || a.raws.length - b.raws.length || a.ri - b.ri);
+    if (!opts.length) return null;
+    /* Empacado na rota atual? A arma-irmã da outra rota pode ser forjada a partir desta */
+    const cur = ITEMS[V().you.equip.arma];
+    const swap = opts[0].step == null && cur.r === 2
+      ? RECIPES.map((r, i) => i).filter((i) => RECIPES[i].ins.includes(cur.id) && ITEMS[RECIPES[i].out].t === 'arma' && ITEMS[RECIPES[i].out].r === cur.r).map(plan)[0] || null
+      : null;
+    return { ...opts[0], alt: opts[1] || null, swap };
   }
   /* Próxima proteção ao alcance: só melhorias, preferindo a que falta menos e as partes desprotegidas */
-  function defGoal() {
+  function defGoal(g) {
     const u = V().you, own = Sim.owned(u);
+    /* componentes reservados para a arma não são sugeridos para proteção */
+    const reserved = g ? [...g.rec.ins, ...(g.alt ? g.alt.rec.ins : [])].filter((id) => ITEMS[id].mid) : [];
     let best = null;
     RECIPES.forEach((rec, ri) => {
       const out = ITEMS[rec.out];
       if (out.t !== 'armadura' || own[out.id]) return;
       const cur = u.equip[out.slot] && ITEMS[u.equip[out.slot]];
       if (cur && out.r <= cur.r) return;
-      const miss = rec.ins.filter((id) => !own[id]);
-      const score = miss.length * 10 + (cur ? 1 : 0) + out.r * 0.1; // no empate, a peça mais simples
-      if (!best || score < best.score) best = { ri, rec, miss, score };
+      if (rec.ins.some((id) => (ITEMS[id].t === 'armadura' && !own[id]) || reserved.includes(id))) return; // falta a peça de base, ou disputaria com a arma
+      const p = plan(ri);
+      const score = p.raws.length * 10 + (cur ? 1 : 0) + out.r * 0.1; // no empate, a peça mais simples
+      if (!best || score < best.score) best = { ...p, score };
     });
     return best;
   }
-  const wanted = (g, dg) => [...new Set([...(g ? g.miss : []), ...(dg ? dg.miss : [])])];
+  const wanted = (g, dg) => [...new Set([...(g ? g.raws : []), ...(dg ? dg.raws : [])])];
+  /* Um item que falta; se for componente, mostra do que ele é feito */
+  const missText = (id) => {
+    const it = ITEMS[id], own = Sim.owned(V().you), rec = it.mid && RECIPES.find((r) => r.out === id);
+    return `${it.i} ${it.n}${rec ? ` <span class="muted">(${rec.ins.map((x) => `<span class="${own[x] ? 'have' : ''}">${ITEMS[x].i} ${ITEMS[x].n}</span>`).join(' + ')})</span>` : ''}`;
+  };
+  const planHtml = (icon, p, area) => (!p ? '' : p.step != null
+    ? `<button class="goal ready" data-a="craft" data-v="${p.step}">${icon === '🎯' ? '⚒️' : icon} Pronto: forjar ${itemName(RECIPES[p.step].out)}${p.step !== p.ri ? ` <small>para ${ITEMS[p.rec.out].n}</small>` : ''}</button>`
+    : `<p class="goal small">${icon} ${itemName(p.rec.out)} — falta ${p.miss.map(missText).join(', ')}${areaHas(area, p.raws) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`)
+    + (p && p.swap ? (p.swap.step != null
+      ? `<button class="goal swap" data-a="craft" data-v="${p.swap.step}">↪ Trocar de rota: forjar ${itemName(RECIPES[p.swap.step].out)}</button>`
+      : `<p class="small muted alt">↪ trocar de rota: ${itemName(p.swap.rec.out)} — falta ${p.swap.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}</p>`) : '')
+    + (p && p.alt ? `<p class="small muted alt">↪ outra rota: ${itemName(p.alt.rec.out)} — ${p.alt.step != null ? 'pronta para forjar' : `falta ${p.alt.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}`}</p>` : '');
   /* O que se sabe de cada região: o estoque visto na última visita; sem visita, o que costuma haver lá */
   const known = (a) => (a === V().you.area ? V().stock : V().you.memo[a]) || null;
   const areaHas = (a, ids) => { const k = known(a); return ids.some((id) => (k ? k[id] > 0 : AREAS[a].loot.some((l) => l[0] === id))); };
@@ -353,7 +382,7 @@ const UI = (() => {
   /* ---------- Mapa ---------- */
   function mapHtml() {
     const v = V(), u = v.you, nb = Sim.neighbors(u.area);
-    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
+    const g = goal(), dg = defGoal(g), miss = wanted(g, dg);
     return `<div class="map">${AREAS.map((a, i) => {
       const st = v.areas[i], here = i === u.area, adj = nb.includes(i);
       const seen = v.near[i] || 0;
@@ -371,7 +400,7 @@ const UI = (() => {
 
   function areaInfo(i) {
     const a = AREAS[i], st = V().areas[i];
-    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
+    const g = goal(), dg = defGoal(g), miss = wanted(g, dg);
     const k = known(i);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''} ${k && !k[id] ? 'gone' : ''}">${ITEMS[id].i} ${ITEMS[id].n}${k ? ` ×${k[id] || 0}` : ''}</span>`).join(', ');
@@ -405,7 +434,7 @@ const UI = (() => {
     return `<div class="hudtop"><b class="portrait sm">${h.i}</b><div class="grow">
         <div class="chips">
           <span title="Tempo de partida">⏱️ <span id="clock">0:00</span></span>
-          <span id="mistchip" title="Tempo até o sino">${v.lastStand ? '🔥 refúgio final' : '🔔 <span id="mist">0:00</span>'}</span>
+          <span id="mistchip" title="Tempo até o sino">${v.closing ? '<b class="warn-t">🌫️ névoa final</b>' : v.lastStand ? '🔥 refúgio final' : '🔔 <span id="mist">0:00</span>'}</span>
           <span title="Campeões vivos">👥 ${v.alive}</span>
           <span title="Campeões que você derrotou">☠️ ${u.kills}</span>
         </div>
@@ -419,14 +448,10 @@ const UI = (() => {
 
   function areaHtml() {
     const v = V(), u = v.you, a = AREAS[u.area], status = v.areas[u.area];
-    const g = goal(), dg = defGoal(), miss = wanted(g, dg);
+    const g = goal(), dg = defGoal(g), miss = wanted(g, dg);
     const left = Object.values(v.stock).reduce((x, y) => x + y, 0);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
       `<span class="${miss.includes(id) ? 'want' : ''} ${v.stock[id] ? '' : 'gone'}" title="${ITEMS[id].n}">${ITEMS[id].i}<sub>${v.stock[id] || 0}</sub></span>`).join('');
-    const goalHtml = !g ? ''
-      : !g.miss.length
-        ? `<button class="goal ready" data-a="craft" data-v="${g.ri}">⚒️ Pronto: forjar ${itemName(g.rec.out)}</button>`
-        : `<p class="goal small">🎯 ${itemName(g.rec.out)} — falta ${g.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}${areaHas(u.area, g.miss) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`;
     return `<section class="panel area ${status}">
       <h2>${a.i} ${a.n}
         ${status === 'condenada' ? '<span class="pill warn">condenada — saia em breve</span>' : status === 'selada' ? '<span class="pill bad">névoa — fuja!</span>' : ''}</h2>
@@ -438,10 +463,8 @@ const UI = (() => {
       ${v.infest === u.area ? '<p class="small warn-t">🐾 Região infestada: mais criaturas ao explorar, e elas largam mais espólio.</p>' : ''}
       ${v.caches.includes(u.area) ? '<p class="small">⚰️ Alguém caiu aqui e deixou espólios: explore para achá-los.</p>' : ''}
       ${v.traps.includes(u.area) ? '<p class="small muted">🪤 Sua armadilha está armada aqui.</p>' : ''}
-      ${goalHtml}
-      ${!dg ? '' : !dg.miss.length
-        ? `<button class="goal ready" data-a="craft" data-v="${dg.ri}">🛡️ Pronto: forjar ${itemName(dg.rec.out)}</button>`
-        : `<p class="goal small">🛡️ ${itemName(dg.rec.out)} — falta ${dg.miss.map((id) => `${ITEMS[id].i} ${ITEMS[id].n}`).join(', ')}${areaHas(u.area, dg.miss) ? ' <b class="want">⭐ há aqui</b>' : ''}</p>`}
+      ${planHtml('🎯', g, u.area)}
+      ${planHtml('🛡️', dg, u.area)}
     </section>`;
   }
 
@@ -506,6 +529,7 @@ const UI = (() => {
         <li><b>Objetivo:</b> ser o último dos dez amaldiçoados de pé. A Última Chama concede um desejo ao vencedor — o dele só é revelado na vitória. Tudo acontece em tempo real.</li>
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
         <li><b>Estoque finito e espalhado:</b> cada região tem uma quantidade limitada de cada item, dividida entre todos, e ela não volta. Os materiais de uma mesma arma ficam em regiões diferentes, então nenhuma build se fecha parado num lugar só. Os números ao lado dos ícones mostram o que resta; quanto mais vazia a região, mais buscas terminam de mãos vazias. O mapa lembra como cada lugar estava na sua última visita.</li>
+        <li><b>Componentes e rotas:</b> armas e proteções pedem componentes (Liga de Prata, Aço Frio, Resina Negra…), cada um feito de dois materiais de regiões diferentes e disputado por várias builds. Do 2º degrau em diante cada arma tem duas rotas — uma que bate mais, outra com efeito — e as duas chegam à mesma lendária. Faltou material no meio do caminho? A forja oferece a troca de rota sem voltar ao começo.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
         <li><b>Proteções:</b> cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (mais defesa e vida) e um ágil (crítico, velocidade, ataque rápido). Algumas devolvem dano, regeneram ou resistem à névoa. Com as cinco partes cobertas você recebe 10% menos dano. A linha 🛡️ mostra a próxima peça ao alcance.</li>
         <li><b>Armas:</b> cada tipo luta de um jeito — punhais são rápidos, maças furam defesa, bestas abrem o combate com um tiro forte, cetros fortalecem a habilidade, lanças atrasam o inimigo. Veja o traço na ficha do amaldiçoado e na mochila.</li>

@@ -49,6 +49,21 @@ const Sim = (() => {
     for (const s of SLOTS) if (u.equip[s]) c[u.equip[s]] = (c[u.equip[s]] || 0) + 1;
     return c;
   }
+  /* Receitas que levam a arma equipada a um degrau acima (uma por rota) */
+  const upgrades = (u) => {
+    const cur = ITEMS[u.equip.arma];
+    return cur ? RECIPES.map((_, i) => i).filter((i) => RECIPES[i].ins.includes(cur.id) && ITEMS[RECIPES[i].out].r > cur.r) : [];
+  };
+  /* Troca os componentes que faltam pelos materiais brutos que os compõem */
+  function expand(u, ids, depth = 0) {
+    const own = owned(u), out = [];
+    for (const id of ids) {
+      if (own[id]) continue;
+      const rec = ITEMS[id].mid && depth < 3 ? RECIPES.find((r) => r.out === id) : null;
+      if (rec) out.push(...expand(u, rec.ins, depth + 1)); else out.push(id);
+    }
+    return [...new Set(out)];
+  }
   const canCraft = (u, ri) => { const c = owned(u); return !!RECIPES[ri] && RECIPES[ri].ins.every((id) => c[id] > 0); };
 
   /* players: [{ pid, name, hero }] — os demais campeões, até dez, são controlados pelo jogo */
@@ -105,8 +120,7 @@ const Sim = (() => {
     function draw(u, area) {
       const st = S.stock[area];
       const need = u.kind === 'h' ? (() => {
-        const rec = RECIPES.find((r) => r.ins.includes(u.equip.arma)), own = owned(u);
-        return rec ? rec.ins.filter((id) => !own[id]) : [];
+        return expand(u, upgrades(u).flatMap((ri) => RECIPES[ri].ins));
       })() : [];
       const pairs = Object.keys(st).filter((id) => st[id] > 0).map((id) => [id, st[id] * (need.includes(id) && ITEMS[id].r < 3 ? 1.6 : 1)]);
       if (!pairs.length) return null;
@@ -138,12 +152,11 @@ const Sim = (() => {
       }
       const w = u.equip.arma ? ITEMS[u.equip.arma] : null;
       let armor = 0, hpB = 0, spd = h.spd, pieces = 0;
-      const fx = { crit: 0, haste: 0, block: 0, stun: 0, thorns: 0, regen: 0, mist: 0, stride: false };
+      const fx = { crit: 0, haste: 0, block: 0, stun: 0, thorns: 0, regen: 0, mist: 0, leech: 0, stride: false };
       for (const s of SLOTS) {
-        if (s === 'arma' || !u.equip[s]) continue;
+        if (!u.equip[s]) continue;
         const it = ITEMS[u.equip[s]];
-        pieces++;
-        armor += it.def || 0; hpB += it.hp || 0; spd += it.spd || 0;
+        if (s !== 'arma') { pieces++; armor += it.def || 0; hpB += it.hp || 0; spd += it.spd || 0; }
         for (const k of Object.keys(fx)) if (it[k]) fx[k] = k === 'stride' ? true : fx[k] + it[k];
       }
       const full = pieces === SLOTS.length - 1; // armadura completa: as cinco partes protegidas
@@ -236,6 +249,7 @@ const Sim = (() => {
         }
       }
       if (passive(att, 'vampirismo')) heal(att, d * 0.15);
+      if (sa.leech) heal(att, d * sa.leech);
       return { d, tag: (cr ? ' (CRÍTICO!)' : '') + (guarded ? ' (defendido)' : '') };
     }
     /* Registra um golpe para os dois lados e resolve a morte do alvo */
@@ -537,8 +551,9 @@ const Sim = (() => {
         return;
       }
       if (c === 'explore') {
-        if (u.vigor < 12) return plog(u, 'Você está exausto demais para explorar. Descanse ou beba algo.', 'warn');
-        u.resting = false; u.vigor -= 12;
+        const cost = S.lastStand ? 0 : 12; // no refúgio final a caçada não espera o fôlego de ninguém
+        if (u.vigor < cost) return plog(u, 'Você está exausto demais para explorar. Descanse ou beba algo.', 'warn');
+        u.resting = false; u.vigor -= cost;
         u.act = { type: 'explore', start: S.now, end: S.now + T.explore };
       } else if (c === 'move') {
         const to = Number(v);
@@ -574,6 +589,10 @@ const Sim = (() => {
 
     function restTick(u) {
       u.restAt = S.now + T.rest;
+      if (S.areas[u.area] === 'selada' || (S.lastStand && S.now > S.lastStandAt + 120)) {
+        u.resting = false;
+        return plog(u, 'A névoa não deixa ninguém descansar aqui.', 'warn');
+      }
       const k = AREAS[u.area].sanctuary ? 1.6 : 1, mx = stats(u).maxHp;
       heal(u, mx * 0.03 * k);
       u.vigor = Math.min(100, u.vigor + Math.round(5 * k));
@@ -598,7 +617,7 @@ const Sim = (() => {
       if (doomed.length) glog(`🔔 O sino toca. Em ${T.mist} segundos a névoa tomará: ${doomed.join(' e ')}.`, 'warn');
       const open = S.areas.map((st, i) => (st === 'livre' ? i : -1)).filter((i) => i >= 0);
       if (doomed.length && open.length) {
-        S.relic = { area: pick(open), item: Math.random() < 0.15 ? pick(['escama', 'estelar']) : pick(['runa', 'essencia', 'cristal', 'prata', 'pocao_cura', 'elixir']) };
+        S.relic = { area: pick(open), item: S.now > 360 && Math.random() < 0.2 ? pick(['escama', 'estelar']) : pick(['runa', 'essencia', 'cristal', 'prata', 'pocao_cura', 'elixir']) };
         glog(`✨ Uma relíquia surgiu em ${AREAS[S.relic.area].n}. Quem explorar lá primeiro fica com ela.`, 'sys');
         /* As criaturas também rodam pelo mapa: a cada toque do sino, uma região fica infestada */
         const rest = open.filter((a) => a !== S.relic.area);
@@ -658,14 +677,15 @@ const Sim = (() => {
       const mx = stats(u).maxHp, near = others(u);
       const bots = near.filter((x) => x.kind === 'b'), hum = near.filter((x) => x.kind === 'h');
       if (hum.length && Math.random() < (S.lastStand ? 0.4 : 0.08)) return engage(u, pick(hum), true);
-      if (bots.length && Math.random() < 0.2) return botDuel(u, pick(bots));
+      if (bots.length && Math.random() < (S.lastStand ? 0.6 : 0.2)) return botDuel(u, pick(bots));
       /* Região já bem revirada: os rivais também seguem viagem atrás do que falta */
       if (sum(S.stock[u.area]) < 0.4 * S.stock0[u.area] && Math.random() < 0.5) {
         const nb = neighbors(u.area).filter((a) => S.areas[a] === 'livre');
         if (nb.length) { u.area = pick(nb); u.prog += 0.8; return; }
       }
       const r = Math.random();
-      if (u.hp < mx * 0.5 && r < 0.5) { u.hp = Math.min(mx, u.hp + mx * 0.25); return; }
+      const closing = S.lastStand && S.now > S.lastStandAt + 120; // na névoa final ninguém se recupera
+      if (!closing && u.hp < mx * 0.5 && r < 0.5) { u.hp = Math.min(mx, u.hp + mx * 0.25); return; }
       if (r < 0.6) {
         if (!draw(u, u.area)) { // região esgotada: rende menos e é hora de procurar outra
           u.prog += 0.9;
@@ -682,7 +702,7 @@ const Sim = (() => {
       } else if (r < 0.8) {
         const nb = neighbors(u.area).filter((a) => S.areas[a] === 'livre');
         if (nb.length) u.area = pick(nb);
-      } else u.hp = Math.min(mx, u.hp + mx * 0.1);
+      } else if (!closing) u.hp = Math.min(mx, u.hp + mx * 0.1);
     }
 
     /* ---------- Avanço do tempo ---------- */
@@ -700,7 +720,9 @@ const Sim = (() => {
           /* Garantia de desfecho: dois minutos depois de restar um só refúgio, a névoa entra nele também */
           const closing = S.lastStand && S.now > S.lastStandAt + 120;
           if ((closing || S.areas[u.area] === 'selada') && !(u.act && u.act.type === 'move')) {
-            const md = Math.max(1, Math.round(T.mistDmg * (1 - Math.min(0.8, stats(u).mist || 0))));
+            /* no refúgio final a névoa aperta a cada 15 segundos, até não sobrar ninguém além do vencedor */
+            const grow = closing ? 1 + Math.floor((S.now - S.lastStandAt - 120) / 15) : 1;
+            const md = Math.max(1, Math.round(T.mistDmg * grow * (1 - Math.min(0.8, stats(u).mist || 0))));
             u.hp -= md;
             plog(u, `🌫️ A Névoa Cinzenta corrói sua carne (−${md} de vida). Saia daqui!`, 'bad');
             if (dead(u)) { kill(u, null, 'mist'); continue; }
@@ -741,7 +763,7 @@ const Sim = (() => {
       if (passive(u, 'rastreador')) for (const a of neighbors(u.area)) near[a] = champs().filter((x) => x.area === a).length;
       const { log, pid, ...me } = u;
       return {
-        now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand,
+        now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand, closing: S.lastStand && S.now > S.lastStandAt + 120,
         alive: champs().length, total: S.total, ended: S.over, near,
         stock: { ...S.stock[u.area] }, infest: S.infest, relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
         traps: S.traps.filter((t) => t.owner === u.id).map((t) => t.area),
@@ -758,5 +780,5 @@ const Sim = (() => {
     return { S, ids, step, cmd, view, removePlayer };
   }
 
-  return { create, T, neighbors, xpNeed, mxpNeed, owned, canCraft };
+  return { create, T, neighbors, xpNeed, mxpNeed, owned, canCraft, upgrades, expand };
 })();

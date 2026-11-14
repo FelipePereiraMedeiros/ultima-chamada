@@ -48,7 +48,11 @@ a ele diretamente por WebRTC. Isso tem consequências:
   O mapa todo tem cerca de 240 itens para dez campeões, e os materiais de uma mesma arma ficam em regiões
   diferentes: nenhuma chega ao terceiro degrau com menos de três regiões visitadas. Os materiais lendários só
   vêm da Serpe do Abismo (única por partida), de relíquias raras e de rivais no auge.
-- **Forjar** equipamento melhor: sete tipos de arma, cinco degraus cada, do comum ao lendário.
+- **Forjar** equipamento melhor, sempre com dois insumos. Armas e proteções pedem **componentes** (Liga de
+  Prata, Aço Frio, Resina Negra…), cada um feito de dois materiais de regiões diferentes e disputado por
+  várias builds. Do 2º degrau em diante cada arma tem **duas rotas** — uma que bate mais, outra com efeito
+  (por exemplo, Punhal Sagrado ou Punhal Profano) — e as duas chegam à mesma lendária. Se o material de uma
+  rota acabar, dá para **trocar de rota** sem voltar ao começo.
 - **Proteger-se:** cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (defesa e vida) e um
   ágil (crítico, velocidade, ataque rápido). Há peças que devolvem dano, regeneram, resistem à névoa ou
   encurtam atordoamentos; com as cinco partes cobertas o dano recebido cai 10%.
