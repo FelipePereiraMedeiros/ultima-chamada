@@ -363,7 +363,7 @@ const UI = (() => {
         <b>${a.i}</b><span>${a.n}</span>
         ${here ? '<em class="you">VOCÊ</em>' : ''}
         ${st === 'condenada' ? '<em class="tag tr">🔔</em>' : st === 'selada' ? '<em class="tag tr">🌫️</em>' : ''}
-        ${(() => { const m = (want ? '⭐' : '') + (v.relic === i ? '✨' : '') + (v.caches.includes(i) ? '⚰️' : '') + (v.traps.includes(i) ? '🪤' : ''); return m ? `<em class="tag bl">${m}</em>` : ''; })()}
+        ${(() => { const m = (want ? '⭐' : '') + (v.relic === i ? '✨' : '') + (v.infest === i ? '🐾' : '') + (v.caches.includes(i) ? '⚰️' : '') + (v.traps.includes(i) ? '🪤' : ''); return m ? `<em class="tag bl">${m}</em>` : ''; })()}
         ${seen ? `<em class="tag br seen">👁️${seen}</em>` : ''}
       </button>`;
     }).join('')}</div>`;
@@ -435,6 +435,7 @@ const UI = (() => {
       ${left ? '' : '<p class="small warn-t">Região esgotada: não resta nada para achar aqui. Só criaturas, espólios e relíquias ainda rendem.</p>'}
       ${v.here ? `<p class="small warn-t">👣 Rastros frescos: ${v.here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
       ${v.relic === u.area ? '<p class="small want">✨ Há uma relíquia escondida aqui: explore para reclamá-la.</p>' : ''}
+      ${v.infest === u.area ? '<p class="small warn-t">🐾 Região infestada: mais criaturas ao explorar, e elas largam mais espólio.</p>' : ''}
       ${v.caches.includes(u.area) ? '<p class="small">⚰️ Alguém caiu aqui e deixou espólios: explore para achá-los.</p>' : ''}
       ${v.traps.includes(u.area) ? '<p class="small muted">🪤 Sua armadilha está armada aqui.</p>' : ''}
       ${goalHtml}
@@ -504,7 +505,7 @@ const UI = (() => {
       <ul class="help">
         <li><b>Objetivo:</b> ser o último dos dez amaldiçoados de pé. A Última Chama concede um desejo ao vencedor — o dele só é revelado na vitória. Tudo acontece em tempo real.</li>
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
-        <li><b>Estoque finito:</b> cada região tem uma quantidade limitada de cada item, dividida entre todos, e ela não volta. Os números ao lado dos ícones mostram o que resta; quanto mais vazia a região, mais buscas terminam de mãos vazias. O mapa lembra como cada lugar estava na sua última visita.</li>
+        <li><b>Estoque finito e espalhado:</b> cada região tem uma quantidade limitada de cada item, dividida entre todos, e ela não volta. Os materiais de uma mesma arma ficam em regiões diferentes, então nenhuma build se fecha parado num lugar só. Os números ao lado dos ícones mostram o que resta; quanto mais vazia a região, mais buscas terminam de mãos vazias. O mapa lembra como cada lugar estava na sua última visita.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
         <li><b>Proteções:</b> cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (mais defesa e vida) e um ágil (crítico, velocidade, ataque rápido). Algumas devolvem dano, regeneram ou resistem à névoa. Com as cinco partes cobertas você recebe 10% menos dano. A linha 🛡️ mostra a próxima peça ao alcance.</li>
         <li><b>Armas:</b> cada tipo luta de um jeito — punhais são rápidos, maças furam defesa, bestas abrem o combate com um tiro forte, cetros fortalecem a habilidade, lanças atrasam o inimigo. Veja o traço na ficha do amaldiçoado e na mochila.</li>
@@ -623,7 +624,7 @@ const UI = (() => {
       patch('r-cq', quickHtml(true));
     } else if (modal) {
       const body = modal === 'inv' ? invModal() : modal === 'craft' ? craftModal() : modal === 'help' ? helpModal()
-        : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem material que falta · ✨ relíquia · ⚰️ espólios · 🪤 sua armadilha · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
+        : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem material que falta · ✨ relíquia · 🐾 infestada · ⚰️ espólios · 🪤 sua armadilha · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
       patch('r-over', modalHtml(body), ['r-vs', 'r-clog', 'r-cq']);
     } else patch('r-over', '', ['r-vs', 'r-clog', 'r-cq']);
     enter(u.over ? 'end' : v.foe ? 'combat' : modal ? `modal:${modal}` : '', '#r-over .modal');

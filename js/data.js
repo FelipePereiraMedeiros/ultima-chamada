@@ -221,45 +221,51 @@ const MONS = {
   ogro: { n: 'Gárgula de Pedra', i: '😈', hp: 115, atk: 23, def: 5, spd: 2, xp: 65, drops: [['carne', 3], ['couro', 3], ['pedra', 2], ['prata', 1]] },
   espectro: { n: 'Alma Penada', i: '👻', hp: 72, atk: 21, def: 3, spd: 7, xp: 62, drops: [['essencia', 4], ['pano', 2], ['cristal', 2]] },
   troll: { n: 'Abominação do Lodo', i: '🧌', hp: 165, atk: 29, def: 8, spd: 3, xp: 105, drops: [['couro', 2], ['osso', 2], ['essencia', 3], ['runa', 1]] },
-  golem: { n: 'Sentinela do Sarcófago', i: '🗿', hp: 185, atk: 31, def: 14, spd: 2, xp: 125, drops: [['runa', 5], ['ferro', 2], ['estelar', 1]] },
-  wyrm: { n: 'Serpe do Abismo', i: '🐉', hp: 270, atk: 40, def: 12, spd: 5, xp: 230, drops: [['escama', 6], ['estelar', 2]] },
+  golem: { n: 'Sentinela do Sarcófago', i: '🗿', hp: 185, atk: 31, def: 14, spd: 2, xp: 125, drops: [['runa', 5], ['ferro', 3], ['cristal', 2]] },
+  wyrm: { n: 'Serpe do Abismo', i: '🐉', hp: 420, atk: 52, def: 16, spd: 5, xp: 300, drops: [['escama', 6], ['estelar', 2]] },
 };
 
 /* O campo de batalha: grade 4x4, vizinhas na horizontal e na vertical.
+   `loot` é o estoque de cada item numa partida — quantidades reais, que não se repõem (cerca de 240 no mapa todo,
+   para dez campeões). Regras da distribuição, conferidas por tools/check-distribution.js:
+     - cada material existe em duas ou três regiões, afastadas entre si;
+     - os ingredientes de um mesmo passo de forja nunca estão na mesma região;
+     - a arma inicial de um tipo nunca aparece onde está o material do seu primeiro aprimoramento;
+     - nenhuma arma chega ao terceiro degrau com menos de três regiões visitadas.
    Cada amaldiçoado reconhece na ilha um pedaço do lugar onde sua história deu errado. */
 const AREAS = [
   { n: 'Recife da Sereia', i: '⚓', d: 'Navios partidos contra a rocha onde alguém cantava. O cordame ainda balança sem vento.',
-    danger: 0.15, mons: ['goblin'], loot: [['corda', 4], ['pano', 3], ['galho', 3], ['agua', 2], ['lanca_caca', 2], ['cantil', 2], ['carne', 1]] },
+    danger: 0.15, mons: ['goblin'], loot: [['corda', 5], ['galho', 4], ['agua', 4], ['erva', 3], ['lanca_caca', 2], ['cantil', 2]] },
   { n: 'Vila dos Archotes', i: '🏚️', d: 'Os aldeões saíram com tochas atrás de um monstro e nunca voltaram para trancar as portas.',
-    danger: 0.15, mons: ['goblin', 'lobo'], loot: [['pano', 4], ['pao', 3], ['faca', 2], ['corda', 2], ['couro', 2], ['maca', 2], ['machadinha', 2], ['capuz', 1], ['luvas', 1]] },
+    danger: 0.15, mons: ['goblin', 'lobo'], loot: [['pano', 5], ['carvao', 4], ['pao', 3], ['machadinha', 2], ['faca', 2], ['capuz', 1]] },
   { n: 'Charneca do Uivo', i: '🌾', d: 'Capim alto e névoa baixa. Quem atravessa à noite jura ouvir alguém pedindo perdão.',
-    danger: 0.15, mons: ['lobo'], loot: [['pao', 3], ['maca', 3], ['galho', 3], ['erva', 2], ['carne', 2], ['pena', 1], ['couro', 1]] },
+    danger: 0.15, mons: ['lobo'], loot: [['couro', 5], ['carne', 4], ['pao', 2], ['maca', 2], ['arco_curto', 2], ['botas', 1]] },
   { n: 'Castelo do Conde', i: '🏰', d: 'Salões gelados, um único lugar posto à mesa e corvos em cada ameia.',
-    danger: 0.3, mons: ['ogro', 'lobo'], loot: [['pena', 4], ['cristal', 3], ['pedra', 3], ['agua', 2], ['prata', 2]] },
+    danger: 0.3, mons: ['ogro', 'lobo'], loot: [['pedra', 5], ['pena', 4], ['espada_curta', 2], ['cantil', 2], ['pao', 2], ['gibao', 1]] },
   { n: 'Feira dos Horrores', i: '🎪', d: 'Tendas rasgadas e jaulas abertas. O cartaz ainda anuncia "os monstros mais terríveis do mundo".',
-    danger: 0.2, mons: ['goblin', 'esqueleto'], loot: [['pano', 3], ['espada_curta', 2], ['arco_curto', 2], ['pao', 2], ['couro', 3], ['corda', 2], ['prata', 2], ['gibao', 1], ['botas', 1]] },
+    danger: 0.2, mons: ['goblin', 'esqueleto'], loot: [['prata', 4], ['couro', 3], ['pao', 3], ['maca', 2], ['espada_curta', 1], ['luvas', 1], ['gibao', 1]] },
   { n: 'Bosque da Lua Cheia', i: '🌲', d: 'Troncos marcados por garras, da altura de um homem. A lua aqui nunca míngua.',
-    danger: 0.25, mons: ['lobo', 'aranha'], loot: [['galho', 4], ['erva', 3], ['cogumelo', 3], ['pena', 2], ['carne', 2], ['arco_curto', 2], ['lanca_caca', 1]] },
+    danger: 0.25, mons: ['lobo', 'aranha'], loot: [['galho', 5], ['cogumelo', 4], ['carne', 3], ['arco_curto', 2], ['maca', 2]] },
   { n: 'Lago de Avalon', i: '🏞️', d: 'Águas imóveis onde uma feiticeira aprendeu tudo — menos a se contentar.',
-    danger: 0.2, mons: ['aranha', 'espectro'], loot: [['agua', 5], ['prata', 3], ['erva', 2], ['cristal', 2], ['pedra', 2]] },
+    danger: 0.2, mons: ['aranha', 'espectro'], loot: [['agua', 6], ['prata', 4], ['erva', 3], ['cajado_aprendiz', 2]] },
   { n: 'Pedreira dos Condenados', i: '⛏️', d: 'Correntes presas à rocha e ferramentas largadas no meio do golpe.',
-    danger: 0.3, mons: ['goblin', 'esqueleto', 'golem'], loot: [['ferro', 5], ['carvao', 4], ['pedra', 3], ['prata', 1], ['martelo_ferreiro', 2]] },
+    danger: 0.3, mons: ['goblin', 'esqueleto', 'golem'], loot: [['ferro', 8], ['pano', 3], ['corda', 3], ['martelo_ferreiro', 2]] },
   { n: 'Pântano das Almas', i: '🐸', d: 'Luzes pálidas dançam sobre o lodo. São bonitas até a gente entender o que são.',
-    danger: 0.35, mons: ['aranha', 'troll'], loot: [['cogumelo', 4], ['erva', 3], ['osso', 2], ['essencia', 2], ['agua', 2], ['couro', 2]] },
+    danger: 0.35, mons: ['aranha', 'troll'], loot: [['cogumelo', 4], ['pena', 4], ['essencia', 3], ['lanca_caca', 1]] },
   { n: 'Templo de Atena', i: '🏛️', d: 'Colunas partidas e um jardim de estátuas com expressão de espanto.',
-    danger: 0.3, mons: ['esqueleto', 'espectro', 'golem'], loot: [['runa', 3], ['cristal', 3], ['pano', 2], ['osso', 2], ['cajado_aprendiz', 2], ['erva', 1]] },
+    danger: 0.3, mons: ['esqueleto', 'espectro', 'golem'], loot: [['cristal', 5], ['runa', 4], ['pedra', 2]] },
   { n: 'Laboratório do Criador', i: '⚡', d: 'Bobinas, fornalhas e uma mesa com correias. Aqui se forja mais rápido — tudo já foi feito às pressas.',
-    danger: 0.25, mons: ['esqueleto', 'ogro'], forge: true, loot: [['carvao', 4], ['ferro', 4], ['martelo_ferreiro', 2], ['machadinha', 2], ['espada_curta', 2], ['couro', 2]] },
+    danger: 0.25, mons: ['esqueleto', 'ogro'], forge: true, loot: [['carvao', 6], ['couro', 3], ['cantil', 2], ['martelo_ferreiro', 1], ['luvas', 1]] },
   { n: 'Capela do Altar Vazio', i: '⛪', d: 'Flores secas, bancos enfeitados e ninguém à espera. Descansar aqui restaura mais.',
-    danger: 0.1, mons: ['lobo'], sanctuary: true, loot: [['erva', 4], ['galho', 3], ['agua', 3], ['pena', 2], ['cristal', 1], ['maca', 3]] },
+    danger: 0.1, mons: ['lobo'], sanctuary: true, loot: [['cristal', 4], ['galho', 4], ['agua', 4], ['erva', 3], ['maca', 3]] },
   { n: 'Cemitério da Vigília', i: '⚰️', d: 'Lápides tortas, covas abertas por dentro. Os mortos daqui dormem mal.',
-    danger: 0.35, mons: ['esqueleto', 'espectro'], loot: [['osso', 5], ['essencia', 2], ['pano', 2], ['prata', 2], ['runa', 1], ['amuleto_osso', 2]] },
+    danger: 0.35, mons: ['esqueleto', 'espectro'], loot: [['osso', 6], ['pedra', 5], ['machadinha', 2], ['amuleto_osso', 1], ['elmo_ferro', 1]] },
   { n: 'Ópera Assombrada', i: '🎼', d: 'O lustre caído no meio da plateia, cortinas em farrapos e um órgão que toca sozinho.',
-    danger: 0.3, mons: ['espectro', 'golem'], loot: [['cristal', 4], ['runa', 2], ['cajado_aprendiz', 2], ['pano', 2], ['essencia', 2], ['estelar', 1]] },
+    danger: 0.3, mons: ['espectro', 'golem'], loot: [['pano', 4], ['essencia', 3], ['carvao', 3], ['faca', 2]] },
   { n: 'Tumba do Faraó', i: '🏜️', d: 'Corredores de areia e ouro, armas de um exército enterrado junto com o rei.',
-    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 3], ['espada_curta', 2], ['machadinha', 2], ['lanca_caca', 2], ['couro', 2], ['corda', 2], ['pedra', 2], ['runa', 1], ['elmo_ferro', 1], ['amuleto_osso', 1]] },
-  { n: 'Abismo da Serpe', i: '🐉', d: 'Ossos calcinados cobrem o chão. Dizem que a fera guarda uma centelha da própria Chama.',
-    danger: 0.45, mons: ['troll', 'wyrm'], loot: [['osso', 4], ['couro', 3], ['carne', 3], ['escama', 1], ['estelar', 1]] },
+    danger: 0.3, mons: ['esqueleto', 'ogro', 'troll'], loot: [['ferro', 6], ['runa', 4], ['corda', 3], ['cajado_aprendiz', 1], ['amuleto_osso', 1]] },
+  { n: 'Abismo da Serpe', i: '🐉', d: 'Ossos calcinados cobrem o chão. A Serpe que mora aqui é única — e guarda os materiais das armas lendárias.',
+    danger: 0.45, mons: ['troll', 'wyrm'], loot: [['osso', 4], ['carne', 4], ['cogumelo', 2]] },
 ];
 
 /* Os amaldiçoados. `wish` é o desejo concedido pela Última Chama, revelado apenas na vitória. */

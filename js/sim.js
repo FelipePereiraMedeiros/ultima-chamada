@@ -57,7 +57,7 @@ const Sim = (() => {
       now: 0, units: {}, nextId: 1, areas: AREAS.map(() => 'livre'),
       mistOrder: shuffle(AREAS.map((_, i) => i)), mistIdx: 0, mistAt: T.mist, tickAt: T.tick,
       over: false, lastStand: false, total: 0, caches: {}, relic: null, traps: [],
-      stock: [], stock0: [],
+      stock: [], stock0: [], infest: null,
     };
     const base = () => ({
       foe: null, alive: true, kills: 0, atkAt: 0, skillAt: 0, guardAt: 0, guardUntil: 0, itemAt: 0, fleeAt: 0,
@@ -92,7 +92,7 @@ const Sim = (() => {
 
     /* Estoque finito: cada região começa com uma quantidade de cada item, que não volta.
        Mais jogadores, um pouco mais de estoque — mas nunca o bastante para todos. */
-    const supply = 1.5 + 0.35 * (players.length - 1);
+    const supply = 1 + 0.1 * (players.length - 1); // as quantidades em AREAS valem para uma partida de dez campeões
     const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
     AREAS.forEach((a, i) => {
       S.stock[i] = {};
@@ -108,7 +108,7 @@ const Sim = (() => {
         const rec = RECIPES.find((r) => r.ins.includes(u.equip.arma)), own = owned(u);
         return rec ? rec.ins.filter((id) => !own[id]) : [];
       })() : [];
-      const pairs = Object.keys(st).filter((id) => st[id] > 0).map((id) => [id, st[id] * (need.includes(id) ? 1.6 : 1)]);
+      const pairs = Object.keys(st).filter((id) => st[id] > 0).map((id) => [id, st[id] * (need.includes(id) && ITEMS[id].r < 3 ? 1.6 : 1)]);
       if (!pairs.length) return null;
       const id = wpick(pairs);
       st[id]--;
@@ -255,8 +255,9 @@ const Sim = (() => {
         delete S.units[u.id];
         if (by && by.kind === 'h') {
           plog(by, `🏆 ${u.name} foi derrotado!`, 'good');
+          if (u.mon === 'wyrm') { S.wyrmDead = true; glog(`🐉 ${by.name} abateu a Serpe do Abismo.`, 'sys'); }
           gainXp(by, u.xp * (passive(by, 'rastreador') ? 1.5 : 1));
-          let k = 1 + (Math.random() < 0.4 ? 1 : 0);
+          let k = 1 + (Math.random() < 0.4 ? 1 : 0) + (S.infest === by.area ? 1 : 0);
           while (k--) give(by, wpick(u.drops), 'Obteve');
         }
         return;
@@ -279,13 +280,13 @@ const Sim = (() => {
         else {
           loot = [pick(['pao', 'carne_assada', 'cha_lunar', 'cantil']), pick(['ferro', 'couro', 'prata', 'cristal', 'osso'])];
           if (u.wtier >= 2) loot.push(pick(['runa', 'essencia', 'pocao_cura']));
-          if (u.wtier >= 3) loot.push(pick(['escama', 'estelar']));
+          if (u.wtier >= 4 && Math.random() < 0.35) loot.push(pick(['escama', 'estelar']));
         }
         loot.forEach((id) => give(by, id, 'Saqueou'));
       } else {
         const items = u.kind === 'h' ? shuffle(u.inv).slice(0, 4)
           : [pick(['pao', 'carne_assada', 'cha_lunar']), pick(['ferro', 'couro', 'prata', 'cristal', 'osso'])]
-            .concat(u.wtier >= 2 ? [pick(['runa', 'essencia', 'pocao_cura'])] : [], u.wtier >= 3 ? [pick(['escama', 'estelar'])] : []);
+            .concat(u.wtier >= 2 ? [pick(['runa', 'essencia', 'pocao_cura'])] : [], u.wtier >= 4 && Math.random() < 0.35 ? [pick(['escama', 'estelar'])] : []);
         if (items.length) (S.caches[u.area] = S.caches[u.area] || []).push({ name: u.name, items });
       }
       if (u.kind === 'h') {
@@ -458,7 +459,8 @@ const Sim = (() => {
 
     function pickMon(u) {
       const a = AREAS[u.area];
-      const ok = a.mons.filter((id) => MONS[id].xp < 60 || (MONS[id].xp < 100 ? u.level >= 2 : u.level >= 4));
+      /* A Serpe é única: abatida uma vez, não volta nesta partida */
+      const ok = a.mons.filter((id) => !(id === 'wyrm' && S.wyrmDead) && (MONS[id].xp < 60 || (MONS[id].xp < 100 ? u.level >= 2 : u.level >= 4)));
       return ok.length ? pick(ok) : 'aranha';
     }
     function spawnMon(u) {
@@ -499,7 +501,7 @@ const Sim = (() => {
         return c.items.forEach((id) => give(u, id, 'Recolheu'));
       }
       if (near.length && Math.random() < (S.lastStand ? 0.6 : 0.2)) return engage(u, pick(near), false);
-      if (Math.random() < a.danger) return engage(spawnMon(u), u, false);
+      if (Math.random() < a.danger + (S.infest === u.area ? 0.2 : 0)) return engage(spawnMon(u), u, false);
       const left = sum(S.stock[u.area]);
       if (!left) { remember(u); return plog(u, 'Esta região já foi revirada de ponta a ponta: não resta nada para achar aqui.', 'warn'); }
       /* Quanto mais vazia a região, mais buscas terminam de mãos vazias */
@@ -596,11 +598,15 @@ const Sim = (() => {
       if (doomed.length) glog(`🔔 O sino toca. Em ${T.mist} segundos a névoa tomará: ${doomed.join(' e ')}.`, 'warn');
       const open = S.areas.map((st, i) => (st === 'livre' ? i : -1)).filter((i) => i >= 0);
       if (doomed.length && open.length) {
-        S.relic = { area: pick(open), item: pick(['runa', 'essencia', 'escama', 'estelar', 'pocao_cura', 'elixir']) };
+        S.relic = { area: pick(open), item: Math.random() < 0.15 ? pick(['escama', 'estelar']) : pick(['runa', 'essencia', 'cristal', 'prata', 'pocao_cura', 'elixir']) };
         glog(`✨ Uma relíquia surgiu em ${AREAS[S.relic.area].n}. Quem explorar lá primeiro fica com ela.`, 'sys');
+        /* As criaturas também rodam pelo mapa: a cada toque do sino, uma região fica infestada */
+        const rest = open.filter((a) => a !== S.relic.area);
+        S.infest = rest.length ? pick(rest) : null;
+        if (S.infest != null) glog(`🐾 As criaturas se agitam em ${AREAS[S.infest].n}: mais perigo e mais espólio por lá.`, 'sys');
       }
       else if (sealed.length) {
-        S.lastStand = true;
+        S.lastStand = true; S.lastStandAt = S.now;
         glog(`🔥 Resta um único refúgio: ${AREAS[S.mistOrder[S.mistOrder.length - 1]].n}. É lá que tudo termina.`, 'warn');
       }
     }
@@ -652,16 +658,23 @@ const Sim = (() => {
       const mx = stats(u).maxHp, near = others(u);
       const bots = near.filter((x) => x.kind === 'b'), hum = near.filter((x) => x.kind === 'h');
       if (hum.length && Math.random() < (S.lastStand ? 0.4 : 0.08)) return engage(u, pick(hum), true);
-      if (bots.length && Math.random() < 0.3) return botDuel(u, pick(bots));
+      if (bots.length && Math.random() < 0.2) return botDuel(u, pick(bots));
+      /* Região já bem revirada: os rivais também seguem viagem atrás do que falta */
+      if (sum(S.stock[u.area]) < 0.4 * S.stock0[u.area] && Math.random() < 0.5) {
+        const nb = neighbors(u.area).filter((a) => S.areas[a] === 'livre');
+        if (nb.length) { u.area = pick(nb); u.prog += 0.8; return; }
+      }
       const r = Math.random();
       if (u.hp < mx * 0.5 && r < 0.5) { u.hp = Math.min(mx, u.hp + mx * 0.25); return; }
       if (r < 0.6) {
         if (!draw(u, u.area)) { // região esgotada: rende menos e é hora de procurar outra
           u.prog += 0.9;
+          const nb = neighbors(u.area).filter((a) => S.areas[a] === 'livre');
+          if (nb.length) u.area = pick(nb);
           return;
         }
         u.prog += rnd(0.6, 1.4);
-        if (u.prog >= 2.6 + 1.3 * u.ups) {
+        if (u.prog >= 2.4 + 1.15 * u.ups) {
           u.prog = 0; u.ups++; u.level += 2;
           u.wtier = Math.min(4, u.wtier + 1); u.armor += 5;
           u.hp = Math.min(stats(u).maxHp, u.hp + 12);
@@ -677,13 +690,16 @@ const Sim = (() => {
       if (S.over) return;
       S.now += dt;
       if (S.now >= S.mistAt) { S.mistAt += T.mist; mistAdvance(); }
+      if (S.lastStand && !S.closingSaid && S.now > S.lastStandAt + 120) { S.closingSaid = true; glog('🌫️ A névoa invade o último refúgio. Não há mais onde se esconder.', 'bad'); }
       const tick = S.now >= S.tickAt;
       if (tick) S.tickAt += T.tick;
       for (const u of all()) {
         if (S.over) return;
         if (!u.alive || !S.units[u.id]) continue;
         if (tick && u.kind !== 'm') {
-          if (S.areas[u.area] === 'selada' && !(u.act && u.act.type === 'move')) {
+          /* Garantia de desfecho: dois minutos depois de restar um só refúgio, a névoa entra nele também */
+          const closing = S.lastStand && S.now > S.lastStandAt + 120;
+          if ((closing || S.areas[u.area] === 'selada') && !(u.act && u.act.type === 'move')) {
             const md = Math.max(1, Math.round(T.mistDmg * (1 - Math.min(0.8, stats(u).mist || 0))));
             u.hp -= md;
             plog(u, `🌫️ A Névoa Cinzenta corrói sua carne (−${md} de vida). Saia daqui!`, 'bad');
@@ -727,7 +743,7 @@ const Sim = (() => {
       return {
         now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand,
         alive: champs().length, total: S.total, ended: S.over, near,
-        stock: { ...S.stock[u.area] }, relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
+        stock: { ...S.stock[u.area] }, infest: S.infest, relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
         traps: S.traps.filter((t) => t.owner === u.id).map((t) => t.area),
         here: champs().filter((x) => x !== u && x.area === u.area).length,
         foe: f ? {

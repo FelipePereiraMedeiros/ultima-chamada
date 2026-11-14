@@ -45,6 +45,9 @@ a ele diretamente por WebRTC. Isso tem consequências:
 - **Explorar** regiões para achar materiais, armas e comida — pode atrair criaturas ou outros campeões.
   Cada região tem um estoque limitado de cada item, dividido entre todos e que não volta: os números ao lado
   dos ícones mostram o que resta, e o mapa lembra como cada lugar estava na sua última visita.
+  O mapa todo tem cerca de 240 itens para dez campeões, e os materiais de uma mesma arma ficam em regiões
+  diferentes: nenhuma chega ao terceiro degrau com menos de três regiões visitadas. Os materiais lendários só
+  vêm da Serpe do Abismo (única por partida), de relíquias raras e de rivais no auge.
 - **Forjar** equipamento melhor: sete tipos de arma, cinco degraus cada, do comum ao lendário.
 - **Proteger-se:** cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (defesa e vida) e um
   ágil (crítico, velocidade, ataque rápido). Há peças que devolvem dano, regeneram, resistem à névoa ou
@@ -79,3 +82,4 @@ js/vendor/      PeerJS 1.5.4 (licença MIT, incluída)
 ```
 
 Para desenvolvimento, `?net=local` troca a rede por abas do mesmo navegador.
+`node tools/check-distribution.js` confere as regras de distribuição dos itens pelo mapa.
