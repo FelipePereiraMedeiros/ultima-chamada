@@ -7,6 +7,16 @@ const WTYPES = {
   espada: 'Lâmina', machado: 'Foice', martelo: 'Maça', adaga: 'Punhal',
   arco: 'Besta', cajado: 'Cetro', lanca: 'Lança',
 };
+/* Cada tipo de arma luta de um jeito */
+const WTRAITS = {
+  espada: { d: 'Fio preciso: +6% de chance de crítico.', crit: 0.06 },
+  machado: { d: 'Golpe amplo: +15% de dano, mas ataca 10% mais devagar.', dmg: 1.15, iv: 1.1 },
+  martelo: { d: 'Peso bruto: ignora 35% da defesa inimiga, mas ataca 12% mais devagar.', pierce: 0.35, iv: 1.12 },
+  adaga: { d: 'Mão ligeira: ataca 14% mais rápido e +5% de crítico, com 8% menos dano.', iv: 0.86, dmg: 0.92, crit: 0.05 },
+  arco: { d: 'Tiro de abertura: o primeiro golpe de cada combate causa 60% mais dano.', opener: 1.6 },
+  cajado: { d: 'Foco arcano: a habilidade recarrega 20% mais rápido e causa 15% mais dano.', skillCd: 0.8, skillDmg: 1.15 },
+  lanca: { d: 'Alcance: mantém o inimigo longe, que ataca 12% mais devagar.', reach: 1.12 },
+};
 const SLOTS = ['arma', 'cabeca', 'corpo', 'maos', 'pes', 'amuleto'];
 const SLOT_NAMES = {
   arma: 'Arma', cabeca: 'Cabeça', corpo: 'Corpo', maos: 'Mãos', pes: 'Pés', amuleto: 'Amuleto',
@@ -128,6 +138,14 @@ con('cha_lunar', 'Chá de Acônito', '🍵', 1, 10, 45);
 con('pocao_cura', 'Tônico Vital', '🧪', 2, 110, 0);
 con('elixir', 'Elixir da Meia-Noite', '⚗️', 3, 160, 60);
 
+/* Arremessos (só em combate; ignoram defesa) e armadilhas (armadas na região; ferem o próximo que passar) */
+const thr = (id, n, i, r, dmg, stun = 0) => { ITEMS[id] = { id, n, i, t: 'arremesso', r, dmg, stun }; };
+const trap = (id, n, i, r, dmg, bleed = 0) => { ITEMS[id] = { id, n, i, t: 'armadilha', r, dmg, bleed }; };
+thr('frasco_benta', 'Frasco de Água Benta', '💦', 1, 30);
+thr('bomba_brasa', 'Bomba de Brasa', '💣', 2, 50, 1.5);
+trap('armadilha_ferro', 'Armadilha de Ferro', '🪤', 1, 30);
+trap('armadilha_prata', 'Armadilha de Prata', '🪤', 2, 50, 3);
+
 /* Receitas */
 const RECIPES = [
   ['espada_longa', 'espada_curta', 'ferro'],
@@ -188,6 +206,10 @@ const RECIPES = [
   ['cha_lunar', 'erva', 'agua'],
   ['pocao_cura', 'erva', 'cristal', 'agua'],
   ['elixir', 'pocao_cura', 'essencia', 'cogumelo'],
+  ['frasco_benta', 'agua', 'pano'],
+  ['bomba_brasa', 'carvao', 'pano', 'corda'],
+  ['armadilha_ferro', 'ferro', 'corda'],
+  ['armadilha_prata', 'armadilha_ferro', 'prata'],
 ].map(([out, ...ins]) => ({ out, ins }));
 
 /* Criaturas da noite */
@@ -243,15 +265,15 @@ const AREAS = [
 /* Os amaldiçoados. `wish` é o desejo concedido pela Última Chama, revelado apenas na vitória. */
 const HEROES = [
   { n: 'A Criatura de Frankenstein', s: 'Criatura', de: 'da Criatura', race: 'Feito de retalhos · sem nome', i: '🧟', wt: 'martelo', start: 'martelo_ferreiro',
-    hp: 130, atk: 12, def: 5, spd: 3, passive: 'baluarte',
+    hp: 125, atk: 12, def: 4, spd: 3, passive: 'baluarte',
     pn: 'Carne Costurada', pd: 'Recebe 12% menos dano em combate.',
     skill: { n: 'Punho Galvânico', d: 'Um soco carregado de relâmpago (190% de dano).', cd: 3, type: 'dano', v: 1.9 },
     lore: 'Foi montado, despertado e abandonado na mesma noite. Aprendeu a falar ouvindo famílias pela fresta de uma parede — e aprendeu a odiar quando elas o viram.',
     wish: 'A Chama não lhe deu outro rosto: deu outros olhos a quem o vê. Numa aldeia de montanha alguém abre a porta, não grita, e puxa mais uma cadeira para a mesa. Ele finalmente recebe um nome, e envelhece em paz respondendo a ele.' },
   { n: 'Ankhesar, a Múmia', s: 'Múmia', de: 'da Múmia', race: 'Rainha embalsamada · insone', i: '⚱️', wt: 'cajado', start: 'cajado_aprendiz',
-    hp: 110, atk: 9, def: 5, spd: 4, passive: 'regen',
+    hp: 125, atk: 12, def: 6, spd: 4, passive: 'regen',
     pn: 'Sono Milenar', pd: 'Recupera vida continuamente com o passar do tempo.',
-    skill: { n: 'Bênção das Areias', d: 'Recupera 35% da vida máxima.', cd: 4, type: 'cura', v: 0.35 },
+    skill: { n: 'Bênção das Areias', d: 'Recupera 40% da vida máxima.', cd: 4, type: 'cura', v: 0.4 },
     lore: 'Prometeram-lhe a eternidade no descanso. Então vieram os saqueadores, depois os estudiosos, e cada selo partido a arrancou de volta para um mundo que já não é o seu.',
     wish: 'A areia volta a cobrir a entrada. Os selos se refazem, um a um, e nenhum mapa jamais tornará a apontar para ali. Ankhesar deita, cruza as mãos sobre o peito e, pela primeira vez em três mil anos, dorme.' },
   { n: 'Conde Drácula', s: 'Drácula', de: 'de Drácula', race: 'Vampiro · senhor de um castelo vazio', i: '🧛', wt: 'espada', start: 'espada_curta',
@@ -261,9 +283,9 @@ const HEROES = [
     lore: 'Venceu a morte para não perdê-la — e a perdeu assim mesmo. Desde então atravessa os séculos com a mesa posta para dois.',
     wish: 'Ela desperta como se tivesse apenas cochilado, e a eternidade deixa de ser castigo para ser tempo. Anos depois, pelos corredores onde só havia eco, corre o som mais improvável daquele castelo: risada de criança.' },
   { n: 'Bastien, o Lobisomem', s: 'Lobisomem', de: 'do Lobisomem', race: 'Homem amaldiçoado · refém da lua', i: '🐺', wt: 'adaga', start: 'faca',
-    hp: 120, atk: 12, def: 3, spd: 6, passive: 'furia',
+    hp: 110, atk: 10, def: 3, spd: 5, passive: 'furia',
     pn: 'Fúria da Lua Cheia', pd: 'Com menos de metade da vida, causa 25% mais dano.',
-    skill: { n: 'Garras Dilacerantes', d: 'Ataque (130% de dano) que faz o inimigo sangrar.', cd: 3, type: 'sangrar', v: 1.3 },
+    skill: { n: 'Garras Dilacerantes', d: 'Ataque (115% de dano) que faz o inimigo sangrar.', cd: 3, type: 'sangrar', v: 1.15 },
     lore: 'Uma mordida numa estrada, e desde então acorda uma vez por mês sem saber de quem é o sangue. Trancou-se, acorrentou-se, exilou-se. A fera sempre achou a saída.',
     wish: 'A lua cheia nasce e nada acontece. A fera continua lá, mas agora atende quando ele chama e se deita quando ele manda. Se quiser, nunca mais precisará soltá-la — e é só por isso que, às vezes, ele solta.' },
   { n: 'Lorelei, a Sereia', s: 'Sereia', de: 'da Sereia', race: 'Voz do rochedo · temida, nunca ouvida', i: '🧜‍♀️', wt: 'lanca', start: 'lanca_caca',
@@ -285,7 +307,7 @@ const HEROES = [
     lore: 'Compôs as árias que a cidade inteira aplaudiu, escondido sob o palco onde outros as cantavam. Um rosto bastou para que ninguém quisesse saber da voz.',
     wish: 'Ele tira a máscara diante do espelho e não há nada a esconder. Na noite de estreia sobe ao palco pelo lado da frente, sob o lustre aceso, e a plateia que antes gritaria se levanta para aplaudir de pé.' },
   { n: 'Medusa', s: 'Medusa', de: 'de Medusa', race: 'Górgona · sacerdotisa amaldiçoada', i: '🐍', wt: 'lanca', start: 'lanca_caca',
-    hp: 115, atk: 10, def: 6, spd: 3, passive: 'ferreiro',
+    hp: 115, atk: 11, def: 6, spd: 4, passive: 'ferreiro',
     pn: 'Dádiva de Atena', pd: 'Forja na metade do tempo e suas armaduras protegem 25% mais.',
     skill: { n: 'Olhar de Pedra', d: 'Um golpe (120% de dano) que deixa o inimigo paralisado por alguns segundos.', cd: 4, type: 'atordoar', v: 1.2 },
     lore: 'Servia no templo e foi punida por uma culpa que não era sua. Desde então, todos os que vieram vê-la — por ódio, por glória ou por pena — viraram parte do jardim.',

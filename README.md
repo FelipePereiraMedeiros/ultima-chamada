@@ -47,6 +47,10 @@ a ele diretamente por WebRTC. Isso tem consequências:
 - **Proteger-se:** cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (defesa e vida) e um
   ágil (crítico, velocidade, ataque rápido). Há peças que devolvem dano, regeneram, resistem à névoa ou
   encurtam atordoamentos; com as cinco partes cobertas o dano recebido cai 10%.
+- **Escolher a arma:** cada tipo luta de um jeito — punhais rápidos, maças que furam defesa, bestas com tiro
+  de abertura, cetros que fortalecem a habilidade, lanças que atrasam o inimigo.
+- **Disputar o mapa:** a cada toque do sino surge uma relíquia numa região anunciada a todos; quem cai deixa
+  espólios onde tombou; armadilhas ferem o próximo que passar e avisam o dono; arremessos ignoram a defesa.
 - **Lutar em tempo real:** atacar quando a recarga termina, usar a habilidade do campeão, **defender** no
   momento certo para aparar o golpe, usar itens ou fugir.
 - **Fugir da névoa:** a cada 90 segundos o sino condena novas regiões, até restar um único refúgio.

@@ -56,7 +56,7 @@ const Sim = (() => {
     const S = {
       now: 0, units: {}, nextId: 1, areas: AREAS.map(() => 'livre'),
       mistOrder: shuffle(AREAS.map((_, i) => i)), mistIdx: 0, mistAt: T.mist, tickAt: T.tick,
-      over: false, lastStand: false, total: 0,
+      over: false, lastStand: false, total: 0, caches: {}, relic: null, traps: [],
     };
     const base = () => ({
       foe: null, alive: true, kills: 0, atkAt: 0, skillAt: 0, guardAt: 0, guardUntil: 0, itemAt: 0, fleeAt: 0,
@@ -123,13 +123,15 @@ const Sim = (() => {
       const full = pieces === SLOTS.length - 1; // armadura completa: as cinco partes protegidas
       if (passive(u, 'ferreiro')) armor = Math.round(armor * 1.25);
       const ml = w ? (u.mastery[w.wt] || 0) : 0;
+      const tr = (w && WTRAITS[w.wt]) || {};
       const maxHp = h.hp + (u.level - 1) * 12 + hpB;
       let atk = h.atk + u.level * 2 + (w ? Math.round(w.atk * (1 + ml * 0.05)) : 0);
       if (passive(u, 'furia') && u.hp < maxHp / 2) atk = Math.round(atk * 1.25);
       return {
         atk, def: h.def + u.level + armor, spd, maxHp, ml, w: w ? w.id : null, armor, pieces, full, ...fx,
-        crit: 0.1 + (passive(u, 'precisao') ? 0.15 : 0) + fx.crit,
-        iv: clamp(2.0 - spd * 0.08, 1.0, 1.8) * (1 - Math.min(0.3, fx.haste)),
+        crit: 0.1 + (passive(u, 'precisao') ? 0.15 : 0) + fx.crit + (tr.crit || 0),
+        iv: clamp(2.0 - spd * 0.08, 1.0, 1.8) * (1 - Math.min(0.3, fx.haste)) * (tr.iv || 1),
+        dmg: tr.dmg || 1, pierce: tr.pierce || 0, opener: tr.opener || 0, skillCd: tr.skillCd || 1, skillDmg: tr.skillDmg || 1, reach: tr.reach || 1,
       };
     }
     function heal(u, v) {
@@ -157,7 +159,7 @@ const Sim = (() => {
     /* ---------- Combate ---------- */
     function engage(a, b, ambush) {
       for (const u of [a, b]) {
-        u.act = null; u.resting = false; u.guardUntil = 0; u.shieldUntil = 0; u.stunUntil = 0; u.bleedN = 0;
+        u.act = null; u.resting = false; u.guardUntil = 0; u.shieldUntil = 0; u.stunUntil = 0; u.bleedN = 0; u.opened = false;
       }
       a.foe = b.id; b.foe = a.id;
       const ia = stats(a).iv, ib = stats(b).iv;
@@ -179,7 +181,9 @@ const Sim = (() => {
 
     function hit(att, def, mult) {
       const sa = stats(att), sd = stats(def);
-      let d = sa.atk * mult * rnd(0.85, 1.15) - sd.def * 0.6;
+      let d = sa.atk * mult * (sa.dmg || 1) * rnd(0.85, 1.15) - sd.def * 0.6 * (1 - (sa.pierce || 0));
+      if (sa.opener && !att.opened) d *= sa.opener;
+      att.opened = true;
       const cr = Math.random() < sa.crit;
       if (cr) d *= 1.5;
       if (def.shieldUntil > S.now) d *= 1 - def.shieldV;
@@ -252,6 +256,11 @@ const Sim = (() => {
           if (u.wtier >= 3) loot.push(pick(['escama', 'estelar']));
         }
         loot.forEach((id) => give(by, id, 'Saqueou'));
+      } else {
+        const items = u.kind === 'h' ? shuffle(u.inv).slice(0, 4)
+          : [pick(['pao', 'carne_assada', 'cha_lunar']), pick(['ferro', 'couro', 'prata', 'cristal', 'osso'])]
+            .concat(u.wtier >= 2 ? [pick(['runa', 'essencia', 'pocao_cura'])] : [], u.wtier >= 3 ? [pick(['escama', 'estelar'])] : []);
+        if (items.length) (S.caches[u.area] = S.caches[u.area] || []).push({ name: u.name, items });
       }
       if (u.kind === 'h') {
         u.act = null; u.resting = false;
@@ -287,7 +296,7 @@ const Sim = (() => {
       }
       const skill = u.kind === 'b' && Math.random() < 0.22;
       strike(u, f, skill ? 1.6 : 1, skill ? HEROES[u.hero].skill.n : null);
-      u.atkAt = S.now + st.iv;
+      u.atkAt = S.now + st.iv * (stats(f).reach || 1);
       if (dead(f)) kill(f, u);
     }
 
@@ -304,26 +313,26 @@ const Sim = (() => {
       if (c === 'atk') {
         if (S.now < u.atkAt) return;
         strike(u, f, 1);
-        u.atkAt = S.now + st.iv;
+        u.atkAt = S.now + st.iv * (stats(f).reach || 1);
       } else if (c === 'skill') {
         if (S.now < u.skillAt) return;
         const sk = h.skill;
-        u.skillAt = S.now + (sk.cd - (passive(u, 'arcano') ? 1 : 0)) * T.skillTurn;
+        u.skillAt = S.now + (sk.cd - (passive(u, 'arcano') ? 1 : 0)) * T.skillTurn * st.skillCd;
         u.atkAt = Math.max(u.atkAt, S.now + st.iv * 0.6);
         if (sk.type === 'cura') {
           plog(u, `✨ ${sk.n}: você recupera ${heal(u, st.maxHp * sk.v)} de vida.`, 'good');
         } else if (sk.type === 'duplo') {
-          strike(u, f, sk.v, sk.n);
-          if (!dead(f)) strike(u, f, sk.v, sk.n);
+          strike(u, f, sk.v * st.skillDmg, sk.n);
+          if (!dead(f)) strike(u, f, sk.v * st.skillDmg, sk.n);
         } else {
-          const r = strike(u, f, sk.type === 'escudo' ? 0.7 : sk.v, sk.n);
+          const r = strike(u, f, (sk.type === 'escudo' ? 0.7 : sk.v) * st.skillDmg, sk.n);
           if (sk.type === 'atordoar') {
             f.stunUntil = S.now + T.stun * (1 - Math.min(0.8, stats(f).stun || 0)); f.atkAt = Math.max(f.atkAt, f.stunUntil + 0.2);
             if (f.kind === 'h') f.act = null;
             plog(u, `${f.name} fica atordoado!`, 'cb'); plog(f, 'Você está atordoado!', 'warn');
           }
           if (sk.type === 'sangrar') {
-            f.bleedN = 4; f.bleedD = Math.max(2, Math.round(st.atk * 0.3)); f.bleedAt = S.now + 1; f.bleedBy = u.id;
+            f.bleedN = 4; f.bleedD = Math.max(2, Math.round(st.atk * 0.2)); f.bleedAt = S.now + 1; f.bleedBy = u.id;
             plog(u, `${f.name} começa a sangrar!`, 'cb'); plog(f, 'Você está sangrando!', 'warn');
           }
           if (sk.type === 'escudo') { u.shieldUntil = S.now + T.shield; u.shieldV = sk.v; plog(u, 'Você ergue a guarda.', 'cb'); }
@@ -365,8 +374,28 @@ const Sim = (() => {
     }
     function useItem(u, idx) {
       const it = ITEMS[u.inv[idx]];
-      if (!it || it.t !== 'consumivel') return;
+      if (!it) return;
       if (u.foe && (S.now < u.itemAt || u.stunUntil > S.now)) return;
+      if (it.t === 'arremesso') {
+        const f = S.units[u.foe];
+        if (!f) return plog(u, `${it.i} ${it.n} só pode ser arremessado em combate.`, 'warn');
+        u.inv.splice(idx, 1);
+        const d = it.dmg + u.level * 3;
+        f.hp -= d; u.itemAt = S.now + T.item;
+        plog(u, `Você arremessa ${it.i} ${it.n}: ${d} de dano.`, 'cb');
+        plog(f, `${u.name} arremessa ${it.i} ${it.n} em você: ${d} de dano.`, 'hurt');
+        if (it.stun && !dead(f)) { f.stunUntil = S.now + it.stun; f.atkAt = Math.max(f.atkAt, f.stunUntil + 0.2); plog(u, `${f.name} fica atordoado!`, 'cb'); }
+        if (dead(f)) kill(f, u);
+        return;
+      }
+      if (it.t === 'armadilha') {
+        if (u.foe || u.act) return;
+        if (S.traps.filter((t) => t.owner === u.id).length >= 2) return plog(u, 'Você já tem duas armadilhas armadas.', 'warn');
+        u.inv.splice(idx, 1);
+        S.traps.push({ area: u.area, owner: u.id, dmg: it.dmg + u.level * 3, bleed: it.bleed, n: it.n, i: it.i });
+        return plog(u, `Você arma ${it.i} ${it.n} em ${AREAS[u.area].n}.`, 'good');
+      }
+      if (it.t !== 'consumivel') return;
       const k = passive(u, 'herbalista') ? 1.4 : 1;
       u.inv.splice(idx, 1);
       const h = it.hp ? heal(u, it.hp * k) : 0, before = u.vigor;
@@ -421,17 +450,45 @@ const Sim = (() => {
         const st = S.areas[u.area];
         plog(u, `Você chega a ${AREAS[u.area].i} ${AREAS[u.area].n}.` +
           (st === 'selada' ? ' A névoa aqui é sufocante!' : st === 'condenada' ? ' O sino já tocou por este lugar.' : ''), st === 'livre' ? '' : 'warn');
+        if (springTrap(u)) return;
         const bots = others(u).filter((x) => x.kind === 'b');
         if (bots.length && Math.random() < 0.12) engage(pick(bots), u, true);
         return;
       }
       /* explorar */
+      if (springTrap(u)) return;
       const a = AREAS[u.area], near = others(u);
+      if (S.relic && S.relic.area === u.area && Math.random() < 0.45) {
+        const id = S.relic.item;
+        S.relic = null;
+        glog(`✨ ${u.name} reclamou a relíquia em ${a.n}.`, 'sys');
+        return give(u, id, 'Reclamou');
+      }
+      const cache = S.caches[u.area];
+      if (cache && cache.length && Math.random() < 0.5) {
+        const c = cache.pop();
+        if (!cache.length) delete S.caches[u.area];
+        plog(u, `⚰️ Você encontra os espólios de ${c.name}.`, 'good');
+        return c.items.forEach((id) => give(u, id, 'Recolheu'));
+      }
       if (near.length && Math.random() < (S.lastStand ? 0.6 : 0.2)) return engage(u, pick(near), false);
       if (Math.random() < a.danger) return engage(spawnMon(u), u, false);
       if (Math.random() < 0.06) return plog(u, 'Você vasculha a região, mas não encontra nada útil.');
       let n = 1 + (Math.random() < 0.3 ? 1 : 0) + (passive(u, 'saqueador') && Math.random() < 0.4 ? 1 : 0);
       while (n--) give(u, wpick(a.loot));
+    }
+
+    /* Armadilha de outro campeão na região: fere quem passa e avisa o dono */
+    function springTrap(u) {
+      const k = S.traps.findIndex((t) => t.area === u.area && t.owner !== u.id);
+      if (k < 0) return false;
+      const [t] = S.traps.splice(k, 1), owner = S.units[t.owner];
+      u.hp -= t.dmg;
+      plog(u, `${t.i} Você pisa numa ${t.n}: ${t.dmg} de dano!`, 'bad');
+      plog(owner, `${t.i} Sua ${t.n} em ${AREAS[t.area].n} feriu ${u.name} (${t.dmg} de dano).`, 'good');
+      if (dead(u)) { kill(u, owner && owner.alive ? owner : null); return true; }
+      if (t.bleed) { u.bleedN = t.bleed; u.bleedD = Math.round(t.dmg * 0.2); u.bleedAt = S.now + 1; u.bleedBy = t.owner; }
+      return u.kind === 'h';
     }
 
     function fieldCmd(u, c, v) {
@@ -501,6 +558,11 @@ const Sim = (() => {
         doomed.push(AREAS[a].n);
       }
       if (doomed.length) glog(`🔔 O sino toca. Em ${T.mist} segundos a névoa tomará: ${doomed.join(' e ')}.`, 'warn');
+      const open = S.areas.map((st, i) => (st === 'livre' ? i : -1)).filter((i) => i >= 0);
+      if (doomed.length && open.length) {
+        S.relic = { area: pick(open), item: pick(['runa', 'essencia', 'escama', 'estelar', 'pocao_cura', 'elixir']) };
+        glog(`✨ Uma relíquia surgiu em ${AREAS[S.relic.area].n}. Quem explorar lá primeiro fica com ela.`, 'sys');
+      }
       else if (sealed.length) {
         S.lastStand = true;
         glog(`🔥 Resta um único refúgio: ${AREAS[S.mistOrder[S.mistOrder.length - 1]].n}. É lá que tudo termina.`, 'warn');
@@ -546,6 +608,11 @@ const Sim = (() => {
         if (step != null) u.area = step;
         return;
       }
+      if (S.traps.some((t) => t.area === u.area) && Math.random() < 0.35) { springTrap(u); if (!u.alive) return; }
+      if (S.relic && S.relic.area === u.area && Math.random() < 0.3) {
+        S.relic = null; u.prog += 2;
+        glog(`✨ ${u.name} reclamou a relíquia em ${AREAS[u.area].n}.`, 'sys');
+      }
       const mx = stats(u).maxHp, near = others(u);
       const bots = near.filter((x) => x.kind === 'b'), hum = near.filter((x) => x.kind === 'h');
       if (hum.length && Math.random() < (S.lastStand ? 0.4 : 0.08)) return engage(u, pick(hum), true);
@@ -584,7 +651,7 @@ const Sim = (() => {
           }
           if (u.kind === 'h') {
             if (!u.foe) u.vigor = Math.min(100, u.vigor + 1);
-            const rg = (passive(u, 'regen') ? 2 : 0) + (stats(u).regen || 0);
+            const rg = (passive(u, 'regen') ? 4 : 0) + (stats(u).regen || 0);
             if (rg) heal(u, rg);
           }
         }
@@ -620,6 +687,8 @@ const Sim = (() => {
       return {
         now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand,
         alive: champs().length, total: S.total, ended: S.over, near,
+        relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
+        traps: S.traps.filter((t) => t.owner === u.id).map((t) => t.area),
         here: champs().filter((x) => x !== u && x.area === u.area).length,
         foe: f ? {
           name: f.name, icon: f.icon, kind: f.kind, hp: Math.max(0, Math.round(f.hp)), maxHp: fs.maxHp, iv: fs.iv, atkAt: f.atkAt,

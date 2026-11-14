@@ -65,7 +65,7 @@ const UI = (() => {
     }
     if (b.level > a.level) pending.push({ k: 'glow' });
     for (const e of fresh) {
-      if (e.c === 'good' || /^(Encontrou|Obteve|Saqueou) /.test(e.m)) pending.push({ k: 'toast', txt: e.m });
+      if (e.c === 'good' || /^(Encontrou|Obteve|Saqueou|Recolheu|Reclamou) /.test(e.m)) pending.push({ k: 'toast', txt: e.m });
       else if (e.c === 'kill') pending.push({ k: 'banner', txt: e.m, cls: 'kill' });
       else if (e.c === 'sys' && e.t > 1) pending.push({ k: 'banner', txt: e.m, cls: 'sys' });
       else if ((e.c === 'warn' && /^[🔔🔥]/u.test(e.m)) || (e.c === 'bad' && e.m.includes('engoliu'))) pending.push({ k: 'banner', txt: e.m, cls: 'mist' });
@@ -238,10 +238,12 @@ const UI = (() => {
       if (it.vigor) b.push(`Vigor +${it.vigor}`);
     }
     if (it.t === 'material') b.push('Material');
+    if (it.t === 'arremesso') b.push(`Arremesso · ${it.dmg} de dano${it.stun ? ' · atordoa' : ''} · só em combate`);
+    if (it.t === 'armadilha') b.push(`Armadilha · ${it.dmg} de dano${it.bleed ? ' · faz sangrar' : ''} · arme numa região`);
     return b.join(' · ');
   }
   const itemName = (id) => { const it = ITEMS[id]; return `<span class="r${it.r}">${it.i} ${it.n}</span>`; };
-  const quickLabel = (it) => (it.hp ? `+${it.hp}❤️` : `+${it.vigor}⚡`);
+  const quickLabel = (it) => (it.t === 'arremesso' ? `💥${it.dmg}` : it.t === 'armadilha' ? 'armar' : it.hp ? `+${it.hp}❤️` : `+${it.vigor}⚡`);
 
   function goal() {
     const u = V().you;
@@ -267,7 +269,11 @@ const UI = (() => {
   }
   const wanted = (g, dg) => [...new Set([...(g ? g.miss : []), ...(dg ? dg.miss : [])])];
   const areaHas = (a, ids) => ids.some((id) => AREAS[a].loot.some((l) => l[0] === id));
-  const consumables = () => V().you.inv.map((id, i) => ({ id, i })).filter((x) => ITEMS[x.id].t === 'consumivel');
+  /* Itens de uso rápido: comida sempre; arremessos só em combate; armadilhas só fora dele */
+  const consumables = () => {
+    const extra = V().foe ? 'arremesso' : 'armadilha';
+    return V().you.inv.map((id, i) => ({ id, i })).filter((x) => ITEMS[x.id].t === 'consumivel' || ITEMS[x.id].t === extra);
+  };
 
   /* ---------- Título, seleção e sala ---------- */
   function title() {
@@ -311,6 +317,7 @@ const UI = (() => {
           <p class="muted">${h.race} · ${WTYPES[h.wt]}</p>
           <p><em>${h.lore}</em></p>
           <p class="statline">❤️ ${h.hp} · ⚔️ ${h.atk} · 🛡️ ${h.def} · 💨 ${h.spd} · Começa com ${w.i} ${w.n}</p>
+          <p><b>Arma — ${WTYPES[h.wt]}:</b> ${WTRAITS[h.wt].d}</p>
           <p><b>Passiva — ${h.pn}:</b> ${h.pd}</p>
           <p><b>Habilidade — ${h.skill.n}:</b> ${h.skill.d} <span class="muted">(recarga: ${h.skill.cd * Sim.T.skillTurn}s)</span></p>
           <p class="small wishhint">🔥 O desejo ${h.de} só será revelado se a Chama for sua.</p>
@@ -354,7 +361,7 @@ const UI = (() => {
         <b>${a.i}</b><span>${a.n}</span>
         ${here ? '<em class="you">VOCÊ</em>' : ''}
         ${st === 'condenada' ? '<em class="tag tr">🔔</em>' : st === 'selada' ? '<em class="tag tr">🌫️</em>' : ''}
-        ${want ? '<em class="tag bl">⭐</em>' : ''}
+        ${(() => { const m = (want ? '⭐' : '') + (v.relic === i ? '✨' : '') + (v.caches.includes(i) ? '⚰️' : '') + (v.traps.includes(i) ? '🪤' : ''); return m ? `<em class="tag bl">${m}</em>` : ''; })()}
         ${seen ? `<em class="tag br seen">👁️${seen}</em>` : ''}
       </button>`;
     }).join('')}</div>`;
@@ -421,6 +428,9 @@ const UI = (() => {
       <p class="desc">${a.d}</p>
       <p class="loot">${loot}</p>
       ${v.here ? `<p class="small warn-t">👣 Rastros frescos: ${v.here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
+      ${v.relic === u.area ? '<p class="small want">✨ Há uma relíquia escondida aqui: explore para reclamá-la.</p>' : ''}
+      ${v.caches.includes(u.area) ? '<p class="small">⚰️ Alguém caiu aqui e deixou espólios: explore para achá-los.</p>' : ''}
+      ${v.traps.includes(u.area) ? '<p class="small muted">🪤 Sua armadilha está armada aqui.</p>' : ''}
       ${goalHtml}
       ${!dg ? '' : !dg.miss.length
         ? `<button class="goal ready" data-a="craft" data-v="${dg.ri}">🛡️ Pronto: forjar ${itemName(dg.rec.out)}</button>`
@@ -451,7 +461,8 @@ const UI = (() => {
     const inv = u.inv.length ? u.inv.map((id, i) => {
       const it = ITEMS[id];
       const act = it.t === 'consumivel' ? `<button data-a="use" data-v="${i}">Usar</button>`
-        : it.t !== 'material' ? `<button data-a="equip" data-v="${i}">Equipar</button>` : '';
+        : it.t === 'armadilha' ? `<button data-a="use" data-v="${i}">Armar</button>`
+        : it.t === 'arma' || it.t === 'armadura' ? `<button data-a="equip" data-v="${i}">Equipar</button>` : '';
       return `<li>${itemName(id)}<small>${itemInfo(it)}</small>
         <span class="btns">${act}<button class="ghost" data-a="drop" data-v="${i}" aria-label="Descartar ${it.n}">✕</button></span></li>`;
     }).join('') : '<li class="muted">A mochila está vazia.</li>';
@@ -460,6 +471,7 @@ const UI = (() => {
       <h3>Equipado</h3>
       <p class="small muted">🛡️ Proteção das peças: +${u.st.armor} de defesa · ${u.st.pieces}/5 partes cobertas ·
         ${u.st.full ? '<b class="want">armadura completa: −10% de dano recebido</b>' : 'cubra as cinco para receber −10% de dano'}</p>
+      ${u.st.w ? `<p class="small muted">${ITEMS[u.st.w].i} ${WTYPES[ITEMS[u.st.w].wt]} — ${WTRAITS[ITEMS[u.st.w].wt].d}</p>` : ''}
       <ul class="list eq">${eq}</ul>`;
   }
 
@@ -467,11 +479,11 @@ const UI = (() => {
     const u = V().you, own = Sim.owned(u);
     const rows = RECIPES.map((r, i) => ({ r, i, ok: Sim.canCraft(u, i), part: r.ins.some((id) => own[id]) }))
       .filter((x) => craftAll || x.ok || x.part)
-      .filter((x) => craftTab === 'all' || ITEMS[x.r.out].t === craftTab)
+      .filter((x) => { const t = ITEMS[x.r.out].t; return craftTab === 'all' || t === craftTab || (craftTab === 'util' && t !== 'arma' && t !== 'armadura'); })
       .sort((a, b) => b.ok - a.ok || a.i - b.i);
     const tab = (k, label) => `<button class="${craftTab === k ? 'on' : ''}" data-a="craftTab" data-v="${k}">${label}</button>`;
     return `<h2>⚒️ Forjar</h2>
-      <div class="tabs">${tab('all', 'Tudo')}${tab('arma', '⚔️ Armas')}${tab('armadura', '🛡️ Proteções')}${tab('consumivel', '🍖 Sustento')}</div>
+      <div class="tabs">${tab('all', 'Tudo')}${tab('arma', '⚔️ Armas')}${tab('armadura', '🛡️ Proteções')}${tab('util', '🎒 Utilidades')}</div>
       <label class="check"><input type="checkbox" data-a="craftAll" ${craftAll ? 'checked' : ''}> Mostrar todas as receitas</label>
       <ul class="list">${rows.length ? rows.map(({ r, i, ok }) => {
         const out = ITEMS[r.out];
@@ -488,6 +500,9 @@ const UI = (() => {
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
         <li><b>Proteções:</b> cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (mais defesa e vida) e um ágil (crítico, velocidade, ataque rápido). Algumas devolvem dano, regeneram ou resistem à névoa. Com as cinco partes cobertas você recebe 10% menos dano. A linha 🛡️ mostra a próxima peça ao alcance.</li>
+        <li><b>Armas:</b> cada tipo luta de um jeito — punhais são rápidos, maças furam defesa, bestas abrem o combate com um tiro forte, cetros fortalecem a habilidade, lanças atrasam o inimigo. Veja o traço na ficha do amaldiçoado e na mochila.</li>
+        <li><b>Relíquias e espólios:</b> a cada toque do sino surge uma relíquia ✨ numa região anunciada a todos; quem explorar lá primeiro fica com ela. Quem cai sem ser pelas suas mãos deixa espólios ⚰️ onde tombou.</li>
+        <li><b>Armadilhas e arremessos:</b> armadilhas 🪤 ficam na região e ferem o próximo que passar (e avisam você); arremessos 💥 só valem em combate e ignoram a defesa.</li>
         <li><b>Combate:</b> ataque assim que a recarga terminar, use a habilidade do campeão e toque em <b>Defender</b> pouco antes do golpe inimigo (a barra sob o inimigo mostra quando ele vem) para aparar a maior parte do dano.</li>
         <li><b>Vigor</b> ⚡ é gasto ao explorar e viajar. Descansar recupera vida e vigor aos poucos, mas deixa você exposto.</li>
         <li><b>Névoa Cinzenta:</b> a cada ${Sim.T.mist} segundos o sino condena regiões 🔔; no toque seguinte a névoa as engole 🌫️ e ficar nelas causa dano constante. No fim resta um único refúgio.</li>
@@ -601,7 +616,7 @@ const UI = (() => {
       patch('r-cq', quickHtml(true));
     } else if (modal) {
       const body = modal === 'inv' ? invModal() : modal === 'craft' ? craftModal() : modal === 'help' ? helpModal()
-        : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem o que falta para sua arma · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
+        : `<h2>🗺️ Mapa</h2>${mapHtml()}<p class="small muted legend">Toque numa região vizinha (borda clara) para viajar · ⭐ tem material que falta · ✨ relíquia · ⚰️ espólios · 🪤 sua armadilha · 🔔 condenada · 🌫️ névoa</p>${areaInfo(mapSel ?? u.area)}`;
       patch('r-over', modalHtml(body), ['r-vs', 'r-clog', 'r-cq']);
     } else patch('r-over', '', ['r-vs', 'r-clog', 'r-cq']);
     enter(u.over ? 'end' : v.foe ? 'combat' : modal ? `modal:${modal}` : '', '#r-over .modal');
@@ -642,7 +657,7 @@ const UI = (() => {
     setCd('cd-guard', u.guardAt, T.guardCd, now);
     setCd('cd-flee', u.act && u.act.type === 'flee' ? u.act.end : u.fleeAt, u.act ? T.flee : T.fleeCd, now);
     const sk = HEROES[u.hero].skill;
-    setCd('cd-skill', u.skillAt, Math.max(1, (sk.cd - (HEROES[u.hero].passive === 'arcano' ? 1 : 0)) * T.skillTurn), now);
+    setCd('cd-skill', u.skillAt, Math.max(1, (sk.cd - (HEROES[u.hero].passive === 'arcano' ? 1 : 0)) * T.skillTurn * (u.st.skillCd || 1)), now);
     const cq = $('r-cq');
     if (cq) cq.classList.toggle('cool', now < u.itemAt);
     const fw = $('foe-wind'), yw = $('you-wind');
