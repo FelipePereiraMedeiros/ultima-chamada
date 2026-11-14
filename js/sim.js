@@ -57,6 +57,7 @@ const Sim = (() => {
       now: 0, units: {}, nextId: 1, areas: AREAS.map(() => 'livre'),
       mistOrder: shuffle(AREAS.map((_, i) => i)), mistIdx: 0, mistAt: T.mist, tickAt: T.tick,
       over: false, lastStand: false, total: 0, caches: {}, relic: null, traps: [],
+      stock: [], stock0: [],
     };
     const base = () => ({
       foe: null, alive: true, kills: 0, atkAt: 0, skillAt: 0, guardAt: 0, guardUntil: 0, itemAt: 0, fleeAt: 0,
@@ -71,7 +72,7 @@ const Sim = (() => {
         ...base(), kind: 'h', pid: p.pid, hero: p.hero, name: p.name || h.n, icon: h.i,
         hp: h.hp, vigor: 100, level: 1, xp: 0, mastery: {}, mxp: {}, inv: ['pao', 'pao', 'cantil'],
         equip: { arma: h.start, cabeca: null, corpo: null, maos: null, pes: null, amuleto: null },
-        area: starts[k % starts.length], act: null, resting: false, restAt: 0, log: [], over: null,
+        area: starts[k % starts.length], act: null, resting: false, restAt: 0, log: [], over: null, memo: {},
       }).id;
     });
     const taken = new Set(players.map((p) => p.hero));
@@ -88,6 +89,31 @@ const Sim = (() => {
     const humans = () => all().filter((u) => u.kind === 'h');
     const passive = (u, k) => u.kind === 'h' && HEROES[u.hero].passive === k;
     S.total = champs().length;
+
+    /* Estoque finito: cada região começa com uma quantidade de cada item, que não volta.
+       Mais jogadores, um pouco mais de estoque — mas nunca o bastante para todos. */
+    const supply = 1.5 + 0.35 * (players.length - 1);
+    const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+    AREAS.forEach((a, i) => {
+      S.stock[i] = {};
+      for (const [id, w] of a.loot) S.stock[i][id] = (S.stock[i][id] || 0) + Math.ceil(w * supply);
+      S.stock0[i] = sum(S.stock[i]);
+    });
+    const remember = (u) => { if (u.kind === 'h') u.memo[u.area] = { ...S.stock[u.area] }; };
+    humans().forEach(remember);
+    /* Tira um item do estoque da região. Quem procura algo para a próxima arma tem o olho treinado para isso. */
+    function draw(u, area) {
+      const st = S.stock[area];
+      const need = u.kind === 'h' ? (() => {
+        const rec = RECIPES.find((r) => r.ins.includes(u.equip.arma)), own = owned(u);
+        return rec ? rec.ins.filter((id) => !own[id]) : [];
+      })() : [];
+      const pairs = Object.keys(st).filter((id) => st[id] > 0).map((id) => [id, st[id] * (need.includes(id) ? 1.6 : 1)]);
+      if (!pairs.length) return null;
+      const id = wpick(pairs);
+      st[id]--;
+      return id;
+    }
     const intro = () => humans().forEach((u) => {
       plog(u, 'A Névoa Cinzenta se fecha sobre a Ilha de Vharun. A Última Chama concederá um único desejo — ao último que restar de pé.', 'sys');
       plog(u, `Você desperta em ${AREAS[u.area].i} ${AREAS[u.area].n}.`);
@@ -450,6 +476,7 @@ const Sim = (() => {
         const st = S.areas[u.area];
         plog(u, `Você chega a ${AREAS[u.area].i} ${AREAS[u.area].n}.` +
           (st === 'selada' ? ' A névoa aqui é sufocante!' : st === 'condenada' ? ' O sino já tocou por este lugar.' : ''), st === 'livre' ? '' : 'warn');
+        remember(u);
         if (springTrap(u)) return;
         const bots = others(u).filter((x) => x.kind === 'b');
         if (bots.length && Math.random() < 0.12) engage(pick(bots), u, true);
@@ -473,9 +500,18 @@ const Sim = (() => {
       }
       if (near.length && Math.random() < (S.lastStand ? 0.6 : 0.2)) return engage(u, pick(near), false);
       if (Math.random() < a.danger) return engage(spawnMon(u), u, false);
-      if (Math.random() < 0.06) return plog(u, 'Você vasculha a região, mas não encontra nada útil.');
+      const left = sum(S.stock[u.area]);
+      if (!left) { remember(u); return plog(u, 'Esta região já foi revirada de ponta a ponta: não resta nada para achar aqui.', 'warn'); }
+      /* Quanto mais vazia a região, mais buscas terminam de mãos vazias */
+      if (Math.random() < 0.08 + 0.35 * (1 - left / S.stock0[u.area])) { remember(u); return plog(u, 'Você vasculha a região, mas não encontra nada desta vez.'); }
       let n = 1 + (Math.random() < 0.3 ? 1 : 0) + (passive(u, 'saqueador') && Math.random() < 0.4 ? 1 : 0);
-      while (n--) give(u, wpick(a.loot));
+      while (n--) {
+        if (u.inv.length >= INV_CAP) { plog(u, 'Mochila cheia: você deixa o resto onde está.', 'warn'); break; }
+        const id = draw(u, u.area);
+        if (!id) break;
+        give(u, id);
+      }
+      remember(u);
     }
 
     /* Armadilha de outro campeão na região: fere quem passa e avisa o dono */
@@ -620,10 +656,14 @@ const Sim = (() => {
       const r = Math.random();
       if (u.hp < mx * 0.5 && r < 0.5) { u.hp = Math.min(mx, u.hp + mx * 0.25); return; }
       if (r < 0.6) {
+        if (!draw(u, u.area)) { // região esgotada: rende menos e é hora de procurar outra
+          u.prog += 0.9;
+          return;
+        }
         u.prog += rnd(0.6, 1.4);
-        if (u.prog >= 3 + 1.5 * u.ups) {
+        if (u.prog >= 2.6 + 1.3 * u.ups) {
           u.prog = 0; u.ups++; u.level += 2;
-          u.wtier = Math.min(4, u.wtier + 1); u.armor += 4;
+          u.wtier = Math.min(4, u.wtier + 1); u.armor += 5;
           u.hp = Math.min(stats(u).maxHp, u.hp + 12);
         }
       } else if (r < 0.8) {
@@ -687,7 +727,7 @@ const Sim = (() => {
       return {
         now: S.now, you: { ...me, st: stats(u) }, log: log.slice(), areas: S.areas.slice(), mistIn: S.mistAt - S.now, lastStand: S.lastStand,
         alive: champs().length, total: S.total, ended: S.over, near,
-        relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
+        stock: { ...S.stock[u.area] }, relic: S.relic ? S.relic.area : null, caches: Object.keys(S.caches).map(Number),
         traps: S.traps.filter((t) => t.owner === u.id).map((t) => t.area),
         here: champs().filter((x) => x !== u && x.area === u.area).length,
         foe: f ? {

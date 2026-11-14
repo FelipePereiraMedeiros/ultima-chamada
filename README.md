@@ -43,6 +43,8 @@ a ele diretamente por WebRTC. Isso tem consequências:
 ## Regras
 
 - **Explorar** regiões para achar materiais, armas e comida — pode atrair criaturas ou outros campeões.
+  Cada região tem um estoque limitado de cada item, dividido entre todos e que não volta: os números ao lado
+  dos ícones mostram o que resta, e o mapa lembra como cada lugar estava na sua última visita.
 - **Forjar** equipamento melhor: sete tipos de arma, cinco degraus cada, do comum ao lendário.
 - **Proteger-se:** cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (defesa e vida) e um
   ágil (crítico, velocidade, ataque rápido). Há peças que devolvem dano, regeneram, resistem à névoa ou

@@ -262,13 +262,15 @@ const UI = (() => {
       const cur = u.equip[out.slot] && ITEMS[u.equip[out.slot]];
       if (cur && out.r <= cur.r) return;
       const miss = rec.ins.filter((id) => !own[id]);
-      const score = miss.length * 10 + (cur ? 1 : 0) - out.r * 0.1;
+      const score = miss.length * 10 + (cur ? 1 : 0) + out.r * 0.1; // no empate, a peça mais simples
       if (!best || score < best.score) best = { ri, rec, miss, score };
     });
     return best;
   }
   const wanted = (g, dg) => [...new Set([...(g ? g.miss : []), ...(dg ? dg.miss : [])])];
-  const areaHas = (a, ids) => ids.some((id) => AREAS[a].loot.some((l) => l[0] === id));
+  /* O que se sabe de cada região: o estoque visto na última visita; sem visita, o que costuma haver lá */
+  const known = (a) => (a === V().you.area ? V().stock : V().you.memo[a]) || null;
+  const areaHas = (a, ids) => { const k = known(a); return ids.some((id) => (k ? k[id] > 0 : AREAS[a].loot.some((l) => l[0] === id))); };
   /* Itens de uso rápido: comida sempre; arremessos só em combate; armadilhas só fora dele */
   const consumables = () => {
     const extra = V().foe ? 'arremesso' : 'armadilha';
@@ -370,13 +372,15 @@ const UI = (() => {
   function areaInfo(i) {
     const a = AREAS[i], st = V().areas[i];
     const g = goal(), dg = defGoal(), miss = wanted(g, dg);
+    const k = known(i);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
-      `<span class="${miss.includes(id) ? 'want' : ''}">${ITEMS[id].i} ${ITEMS[id].n}</span>`).join(', ');
+      `<span class="${miss.includes(id) ? 'want' : ''} ${k && !k[id] ? 'gone' : ''}">${ITEMS[id].i} ${ITEMS[id].n}${k ? ` ×${k[id] || 0}` : ''}</span>`).join(', ');
     return `<div class="info">
       <strong>${a.i} ${a.n}</strong>
       ${st === 'condenada' ? '<span class="pill warn">condenada</span>' : st === 'selada' ? '<span class="pill bad">névoa</span>' : ''}
       ${a.forge ? '<span class="pill">forja rápida</span>' : ''}${a.sanctuary ? '<span class="pill">descanso melhor</span>' : ''}
       <p class="small">${loot}</p>
+      <p class="small muted">${i === V().you.area ? 'O que resta aqui agora.' : k ? 'Como estava na sua última visita — outros podem ter passado depois.' : 'Ainda não visitada: é o que costuma haver por lá.'}</p>
       <p class="small muted">Perigos: ${a.mons.map((m) => `${MONS[m].i} ${MONS[m].n}`).join(', ')}</p>
     </div>`;
   }
@@ -416,8 +420,9 @@ const UI = (() => {
   function areaHtml() {
     const v = V(), u = v.you, a = AREAS[u.area], status = v.areas[u.area];
     const g = goal(), dg = defGoal(), miss = wanted(g, dg);
+    const left = Object.values(v.stock).reduce((x, y) => x + y, 0);
     const loot = [...new Set(a.loot.map((l) => l[0]))].map((id) =>
-      `<span class="${miss.includes(id) ? 'want' : ''}" title="${ITEMS[id].n}">${ITEMS[id].i}</span>`).join('');
+      `<span class="${miss.includes(id) ? 'want' : ''} ${v.stock[id] ? '' : 'gone'}" title="${ITEMS[id].n}">${ITEMS[id].i}<sub>${v.stock[id] || 0}</sub></span>`).join('');
     const goalHtml = !g ? ''
       : !g.miss.length
         ? `<button class="goal ready" data-a="craft" data-v="${g.ri}">⚒️ Pronto: forjar ${itemName(g.rec.out)}</button>`
@@ -427,6 +432,7 @@ const UI = (() => {
         ${status === 'condenada' ? '<span class="pill warn">condenada — saia em breve</span>' : status === 'selada' ? '<span class="pill bad">névoa — fuja!</span>' : ''}</h2>
       <p class="desc">${a.d}</p>
       <p class="loot">${loot}</p>
+      ${left ? '' : '<p class="small warn-t">Região esgotada: não resta nada para achar aqui. Só criaturas, espólios e relíquias ainda rendem.</p>'}
       ${v.here ? `<p class="small warn-t">👣 Rastros frescos: ${v.here > 1 ? 'há outros campeões' : 'há outro campeão'} por perto.</p>` : ''}
       ${v.relic === u.area ? '<p class="small want">✨ Há uma relíquia escondida aqui: explore para reclamá-la.</p>' : ''}
       ${v.caches.includes(u.area) ? '<p class="small">⚰️ Alguém caiu aqui e deixou espólios: explore para achá-los.</p>' : ''}
@@ -498,6 +504,7 @@ const UI = (() => {
       <ul class="help">
         <li><b>Objetivo:</b> ser o último dos dez amaldiçoados de pé. A Última Chama concede um desejo ao vencedor — o dele só é revelado na vitória. Tudo acontece em tempo real.</li>
         <li><b>Explorar</b> rende materiais, armas e comida, mas pode atrair criaturas ou outros campeões.</li>
+        <li><b>Estoque finito:</b> cada região tem uma quantidade limitada de cada item, dividida entre todos, e ela não volta. Os números ao lado dos ícones mostram o que resta; quanto mais vazia a região, mais buscas terminam de mãos vazias. O mapa lembra como cada lugar estava na sua última visita.</li>
         <li><b>Forjar</b> combina itens em equipamento melhor. A linha 🎯 mostra o que falta para a próxima arma, e ⭐ marca onde encontrar.</li>
         <li><b>Proteções:</b> cabeça, corpo, mãos, pés e amuleto têm, cada um, um caminho pesado (mais defesa e vida) e um ágil (crítico, velocidade, ataque rápido). Algumas devolvem dano, regeneram ou resistem à névoa. Com as cinco partes cobertas você recebe 10% menos dano. A linha 🛡️ mostra a próxima peça ao alcance.</li>
         <li><b>Armas:</b> cada tipo luta de um jeito — punhais são rápidos, maças furam defesa, bestas abrem o combate com um tiro forte, cetros fortalecem a habilidade, lanças atrasam o inimigo. Veja o traço na ficha do amaldiçoado e na mochila.</li>

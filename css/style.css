@@ -307,3 +307,10 @@ button.goal.ready { animation: ready 1.4s ease-in-out infinite; }
 .tabs button.on { border-color: var(--gold); background: #3a2d22; }
 .goal + .goal { border-top: 0; margin-top: 2px; padding-top: 0; }
 button.goal + button.goal, .goal + button.goal { margin-top: 6px; }
+
+/* ---------- Estoque das regiões ---------- */
+.loot { letter-spacing: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.loot sub { font-size: .62rem; color: var(--muted); margin-left: 1px; vertical-align: baseline; }
+.loot .want sub { color: var(--gold); }
+.gone { opacity: .35; text-decoration: line-through; }
+.loot .gone { text-decoration: none; filter: grayscale(1); }
